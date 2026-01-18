@@ -27,7 +27,8 @@ const formatPercent = (value: number | null | undefined) =>
 const formatRatio = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? '—' : value.toFixed(2);
 
-const formatDuration = (ms: number | null) => {
+// @ts-expect-error Reserved for future use
+const _formatDuration = (ms: number | null) => {
   if (ms == null || !Number.isFinite(ms)) return '—';
   const totalMinutes = Math.round(ms / 60000);
   const hours = Math.floor(totalMinutes / 60);
@@ -46,7 +47,8 @@ const TrendingUpIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
   </svg>
 );
 
-const TrendingDownIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+// @ts-expect-error Reserved for future use
+const _TrendingDownIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
   </svg>
@@ -366,7 +368,6 @@ interface OverviewTabProps {
 }
 
 function OverviewTab({ analysis, symbolAnalysis, insights }: OverviewTabProps) {
-  const pnlTone = analysis.totalPnl >= 0 ? 'text-success' : 'text-error';
   const topInsights = insights.slice(0, 2);
 
   return (
@@ -677,7 +678,8 @@ function BehaviorTab({ behaviorAnalysis }: { behaviorAnalysis: BehaviorAnalysis 
   );
 }
 
-function RiskTab({ riskAnalysis, analysis }: { riskAnalysis: RiskAnalysis; analysis: { maxDrawdown: number; totalPnl: number } }) {
+// @ts-expect-error Reserved for future use
+function _RiskTab({ riskAnalysis, analysis }: { riskAnalysis: RiskAnalysis; analysis: { maxDrawdown: number; totalPnl: number } }) {
   return (
     <div className="space-y-3">
       {/* Risk Metrics */}
@@ -764,7 +766,8 @@ function RiskTab({ riskAnalysis, analysis }: { riskAnalysis: RiskAnalysis; analy
   );
 }
 
-function InsightsTab({ insights }: { insights: SmartInsight[] }) {
+// @ts-expect-error Reserved for future use
+function _InsightsTab({ insights }: { insights: SmartInsight[] }) {
   const categories = {
     time: insights.filter((i) => i.category === 'time'),
     behavior: insights.filter((i) => i.category === 'behavior'),
@@ -789,7 +792,7 @@ function InsightsTab({ insights }: { insights: SmartInsight[] }) {
         if (categoryInsights.length === 0) return null;
         const displayInsights = categoryInsights.slice(0, 2);
 
-        const categoryLabels: Record<string, { label: string; icon: JSX.Element }> = {
+        const categoryLabels: Record<string, { label: string; icon: React.ReactNode }> = {
           time: { label: '时间相关', icon: <ClockIcon className="w-5 h-5" /> },
           behavior: { label: '行为相关', icon: <BrainIcon className="w-5 h-5" /> },
           risk: { label: '风险相关', icon: <ShieldIcon className="w-5 h-5" /> },

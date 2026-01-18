@@ -7,21 +7,29 @@ cd "$(dirname "$0")"
 echo "🚀 Starting backend..."
 cd backend
 uv sync
-uv run uvicorn main:app --reload --port 8000 &
+
+# Import sample data
+echo "📥 Importing sample data..."
+uv run python import_data.py
+
+uv run uvicorn main:app --reload --port 9527 &
 BACKEND_PID=$!
 cd ..
 
 # Start frontend
-echo "🎨 Starting frontend..."
+echo "🎨 Building frontend..."
 cd frontend
-pnpm dev &
+pnpm install
+pnpm build
+echo "🌐 Starting frontend preview..."
+pnpm preview --port 9528 &
 FRONTEND_PID=$!
 cd ..
 
 echo ""
 echo "✅ Services started:"
-echo "   Backend:  http://localhost:8000"
-echo "   Frontend: http://localhost:5173"
+echo "   Backend:  http://localhost:9527"
+echo "   Frontend: http://localhost:9528"
 echo ""
 echo "Press Ctrl+C to stop all services"
 
