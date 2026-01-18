@@ -80,12 +80,20 @@ class TradeImporter:
     def _parse_timestamp(self, ts) -> int | None:
         if pd.isna(ts):
             return None
+        # Excel中的时间是UTC+8，需要明确指定时区
         if isinstance(ts, pd.Timestamp):
+            if ts.tz is None:
+                ts = ts.tz_localize('Asia/Shanghai')
             return int(ts.timestamp() * 1000)
         if hasattr(ts, 'timestamp'):  # datetime.datetime
+            if ts.tzinfo is None:
+                import pytz
+                tz = pytz.timezone('Asia/Shanghai')
+                ts = tz.localize(ts)
             return int(ts.timestamp() * 1000)
         if isinstance(ts, str):
-            return int(pd.to_datetime(ts).timestamp() * 1000)
+            dt = pd.to_datetime(ts).tz_localize('Asia/Shanghai')
+            return int(dt.timestamp() * 1000)
         return int(ts)
 
 

@@ -1351,6 +1351,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "python-multipart" },
+    { name = "pytz" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
@@ -1362,6 +1363,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "pytz", specifier = ">=2024.1" },
     { name = "sqlalchemy", specifier = ">=2.0.35" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
