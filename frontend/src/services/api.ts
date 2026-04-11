@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { adaptImportReportPayload } from './importReportAdapter';
+import type { ImportReport } from './importTypes';
 
 export interface Kline {
   time: number;
@@ -89,10 +91,36 @@ export async function fetchTrades(
   return allTrades;
 }
 
-export async function importTrades(file: File): Promise<{ imported: number }> {
+export async function importTrades(file: File): Promise<ImportReport> {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await axios.post('/api/trades/import', formData);
+  return adaptImportReportPayload(data);
+}
+
+export interface ManualImportRowInput {
+  symbol: string;
+  direction: 'long' | 'short';
+  entry_price: string;
+  entry_time: string;
+}
+
+export async function importTradeRows(rows: ManualImportRowInput[]): Promise<ImportReport> {
+  const { data } = await axios.post('/api/trades/import/rows', {
+    source_filename: 'manual-entry',
+    rows,
+  });
+  return adaptImportReportPayload(data);
+}
+
+export interface RestoreSQLiteBackupResponse {
+  status: 'restored';
+}
+
+export async function restoreSQLiteBackup(file: File): Promise<RestoreSQLiteBackupResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await axios.post<RestoreSQLiteBackupResponse>('/api/backups/restore', formData);
   return data;
 }
 

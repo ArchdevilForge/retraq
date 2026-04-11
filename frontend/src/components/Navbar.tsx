@@ -1,5 +1,5 @@
+import { BrainCircuit, GraduationCap, History, LineChart, SquareArrowOutUpRight } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
-import { BrainCircuit, History, LineChart, GraduationCap } from 'lucide-react';
 
 export default function Navbar() {
   return (
@@ -27,6 +27,19 @@ export default function Navbar() {
           >
             <History className="h-4 w-4" />
             复盘
+          </NavLink>
+          <NavLink
+            to="/import"
+            className={({ isActive }) =>
+              `flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-primary text-primary-content'
+                  : 'text-base-content/70 hover:text-base-content hover:bg-base-200'
+              }`
+            }
+          >
+            <SquareArrowOutUpRight className="h-4 w-4" />
+            导入
           </NavLink>
           <NavLink
             to="/analysis"
