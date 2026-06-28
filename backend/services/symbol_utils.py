@@ -3,15 +3,22 @@ INVALID_SYMBOLS = {
 }
 
 
+_QUOTE_SUFFIXES = ("USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "BNB")
+
+
 def normalize_symbol(raw: str) -> str:
     if not raw:
         return ""
-    parts = str(raw).strip().replace("/", "-").split("-")
-    if len(parts) < 2:
-        return ""
-    base = parts[0].strip().upper()
-    quote = parts[1].strip().upper()
-    return f"{base}-{quote}"
+    s = str(raw).strip().upper().replace("/", "-")
+    if "-" in s:
+        parts = s.split("-")
+        if len(parts) >= 2:
+            base, quote = parts[0].strip(), parts[1].strip()
+            return f"{base}-{quote}" if base and quote else ""
+    for q in _QUOTE_SUFFIXES:
+        if s.endswith(q) and len(s) > len(q):
+            return f"{s[: -len(q)]}-{q}"
+    return ""
 
 
 def is_valid_symbol(symbol: str) -> bool:

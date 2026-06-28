@@ -12,7 +12,7 @@ from migrate import ensure_database
 from models import Trade, Profile
 from profile_scope import get_profile_id
 from services.kline_service import kline_service, TIMEFRAMES
-from services.trade_importer import trade_importer, TEMPLATES
+from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
@@ -39,7 +39,11 @@ class ProfileUpdate(BaseModel):
 
 @app.get("/api/import/templates")
 def list_import_templates():
-    return {"templates": [{"id": k, "label": k} for k in TEMPLATES]}
+    return {
+        "templates": [
+            {"id": k, "label": TEMPLATE_LABELS.get(k, k)} for k in TEMPLATES
+        ]
+    }
 
 
 @app.get("/api/profiles")

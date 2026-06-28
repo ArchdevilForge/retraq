@@ -11,3 +11,6 @@ __pycache__/
 .codex
 .vscode
 .pi
+
+# Binance account exports (contain PII)
+Binance-*.xlsx

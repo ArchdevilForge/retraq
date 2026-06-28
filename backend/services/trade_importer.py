@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 from models import Trade
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
-# Excel column mapping (langge template)
-COLUMN_MAP = {
+# Langge delivery-sheet columns
+COLUMN_MAP_LANGGE = {
     "交易对": "symbol",
     "方向": "direction",
     "杠杆倍数": "leverage",
@@ -17,22 +17,51 @@ COLUMN_MAP = {
     "卖出时间": "exit_time",
 }
 
-TEMPLATES = {"langge": COLUMN_MAP}
+# Binance download center: U-margined futures position history (UTC+8 sheet)
+COLUMN_MAP_BINANCE_FUTURES = {
+    "代币名称/币种名称/币对": "symbol",
+    "持仓方向": "direction",
+    "入场价格": "entry_price",
+    "平均收盘价": "exit_price",
+    "结算盈亏": "profit",
+    "已打开": "entry_time",
+    "已关闭": "exit_time",
+    "状态": "status",
+}
+
+# ponytail: template_id -> {columns, header_row}
+TEMPLATE_SPECS: dict[str, dict] = {
+    "langge": {"columns": COLUMN_MAP_LANGGE, "header": 0},
+    "binance_futures": {"columns": COLUMN_MAP_BINANCE_FUTURES, "header": 9},
+}
+
+TEMPLATE_LABELS = {
+    "langge": "浪哥交割单（xlsx/csv）",
+    "binance_futures": "币安 U 本位合约仓位历史",
+}
+
+TEMPLATES = {k: v["columns"] for k, v in TEMPLATE_SPECS.items()}
 
 
 class TradeImporter:
     def parse_file(
         self, db: Session, file_path: str, profile_id: int, template_id: str = "langge"
     ) -> dict:
-        if template_id not in TEMPLATES:
+        if template_id not in TEMPLATE_SPECS:
             raise ValueError(f"Unknown template: {template_id}")
-        column_map = TEMPLATES[template_id]
+        spec = TEMPLATE_SPECS[template_id]
+        column_map = spec["columns"]
+        header = spec.get("header", 0)
         lower = file_path.lower()
         if lower.endswith(".csv"):
+            if header != 0:
+                raise ValueError("CSV import only supports langge-style header row")
             df = pd.read_csv(file_path)
         else:
-            df = pd.read_excel(file_path, engine="openpyxl")
+            df = pd.read_excel(file_path, engine="openpyxl", header=header)
         df = df.rename(columns=column_map)
+        if template_id == "binance_futures" and "status" in df.columns:
+            df = df[df["status"].astype(str).str.strip().str.lower() == "closed"]
 
         # Filter out invalid rows (must have valid entry_price and entry_time)
         df = df[df["entry_price"].notna() & df["entry_time"].notna()]
@@ -75,7 +104,9 @@ class TradeImporter:
         return {"total": total, "success": success, "failed": failed}
 
     def _normalize_direction(self, direction: str) -> str:
-        d = str(direction).lower()
+        d = str(direction).strip().lower()
+        if d in ("long", "short"):
+            return d
         if "多" in d or "long" in d or "买" in d:
             return "long"
         if "空" in d or "short" in d or "卖" in d:
