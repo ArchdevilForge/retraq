@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - "docker/**"
+      - "docker-compose.yml"
+      - "samples/**"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
 
 permissions:
