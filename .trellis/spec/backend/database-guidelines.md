@@ -1,52 +1,37 @@
 # Database Guidelines
 
-> Database patterns and conventions for this project.
+> ORM patterns, queries, migrations in Retraq.
 
 ---
 
-## Overview
+## Models (SQLite)
 
-<!--
-Document your project's database conventions here.
-
-Questions to answer:
-- What ORM/query library do you use?
-- How are migrations managed?
-- What are the naming conventions for tables/columns?
-- How do you handle transactions?
--->
-
-(To be filled by the team)
+- **`datasets`**: `name` unique; trades/fills CASCADE on delete.
+- **`trades`**: Scoped by `dataset_id`; langge/binance position rows.
+- **`trade_fills`**: Per-fill from Binance trade history; `trade_id` nullable until linked to aggregated position.
 
 ---
 
-## Query Patterns
+## Import templates
 
-<!-- How should queries be written? Batch operations? -->
+`trade_importer.detect_template(path)`:
 
-(To be filled by the team)
+| Template id | Detection |
+|-------------|-----------|
+| `langge` | Header row 0, column `交易对` |
+| `binance_futures_trades` | Header row 9, trade history columns |
+| `binance_futures` | Header row 9, position history columns |
+
+Import API: `template=auto` resolves template after temp file write.
 
 ---
 
 ## Migrations
 
-- Schema bootstrap: `Base.metadata.create_all` + `migrate.ensure_database()` on app/import startup (no Alembic).
-- One-shot column add: `ALTER TABLE trades ADD COLUMN profile_id` when legacy DB has rows without column.
-- Legacy data → profile name **默认**; empty DB → **浪哥（示例）** + langge import of repo `1.xlsx` only to that profile.
-- New trades require `profile_id` (ORM); SQLite may not enforce FK CASCADE on raw ALTER—verify delete-profile in real DB.
+- Run `backend/migrate.py` on deploy; multi-dataset migration from legacy single-db.
 
 ---
 
-## Naming Conventions
+## API scope
 
-<!-- Table names, column names, index names -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Database-related mistakes your team has made -->
-
-(To be filled by the team)
+- `dataset_scope` / `X-Dataset-Id` required for trade and stats routes; reject or default consistently in `main.py`.

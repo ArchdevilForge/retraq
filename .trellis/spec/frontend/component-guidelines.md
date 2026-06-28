@@ -6,54 +6,40 @@
 
 ## Overview
 
-<!--
-Document your project's component conventions here.
-
-Questions to answer:
-- What component patterns do you use?
-- How are props defined?
-- How do you handle composition?
-- What accessibility standards apply?
--->
-
-(To be filled by the team)
+- **Stack**: React 19, Tailwind 4, DaisyUI 5 (`data-theme="retraq"`), Lucide icons.
+- **Design tokens**: `docs/DESIGN.md`, `frontend/src/index.css` @theme, brand accent `#D97757`.
+- **Layout**: Single-window replay — `overflow-hidden` on shell; panels scroll internally.
 
 ---
 
-## Component Structure
+## Chart module
 
-<!-- Standard structure of a component file -->
-
-(To be filled by the team)
-
----
-
-## Props Conventions
-
-<!-- How props should be defined and typed -->
-
-(To be filled by the team)
+- **Entry**: `ChartManager.tsx` re-exports `ChartManagerInner.tsx` (thin file avoids Vite HMR default-export glitches on large modules).
+- **Drawing**: User horizontal lines via `createPriceLine` (solid, **lineWidth 3**); ruler via `chartRulerOverlay.ts` canvas overlay (two-click + move preview).
+- **Trade overlays**: Entry/exit price lines + markers; fill qty shown as **USDT notional** (`price × qty`, langge uses `trade.margin`).
 
 ---
 
-## Styling Patterns
+## Top bar
 
-<!-- How styles are applied (CSS modules, styled-components, Tailwind, etc.) -->
+- **Navbar**: 3-column grid — logo | centered tabs (复盘/分析) | `DatasetPicker` (import + switch).
+- Import: `template=auto`, toast on success/error.
 
-(To be filled by the team)
+---
+
+## Analysis page
+
+- KPI **stats only on 总览 tab**; DaisyUI `stats`, `card card-border`, `table-zebra`.
+- No embedded strategy copy — statistics from current dataset only.
 
 ---
 
 ## Accessibility
 
-<!-- A11y requirements and patterns -->
-
-(To be filled by the team)
+- `cursor-pointer` on clickables (global in `index.css`); `focus-visible` ring; `prefers-reduced-motion` respected.
 
 ---
 
-## Common Mistakes
+## Forbidden
 
-<!-- Component-related mistakes your team has made -->
-
-(To be filled by the team)
+- Emoji as UI icons; gradient text; `alert()` for user messages; nested card-in-card on replay panels.
