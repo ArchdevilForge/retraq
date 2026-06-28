@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from migrate import ensure_database
-from models import Trade, Profile
-from profile_scope import get_profile_id
+from models import Trade, Dataset, TradeFill
+from dataset_scope import get_dataset_id
 from services.kline_service import kline_service, TIMEFRAMES
-from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS
+from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS, detect_template
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
@@ -29,12 +29,33 @@ app.add_middleware(
 )
 
 
-class ProfileCreate(BaseModel):
+class DatasetUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
 
 
-class ProfileUpdate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=128)
+SAMPLE_LANGGE_PATH = os.path.join(os.path.dirname(__file__), "..", "samples", "langge-delivery-example.xlsx")
+SAMPLE_LANGGE_LABEL = "浪哥交割单（示例）"
+
+
+@app.post("/api/import/sample-langge")
+def import_sample_langge(
+    replace: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    if not os.path.isfile(SAMPLE_LANGGE_PATH):
+        raise HTTPException(404, "示例文件不存在：samples/langge-delivery-example.xlsx")
+    dataset = _find_or_create_dataset(db, SAMPLE_LANGGE_LABEL)
+    if replace:
+        db.query(Trade).filter(Trade.dataset_id == dataset.id).delete()
+        db.commit()
+    try:
+        result = trade_importer.parse_file(db, SAMPLE_LANGGE_PATH, dataset.id, "langge")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    result["dataset_id"] = dataset.id
+    result["dataset_name"] = dataset.name
+    result["replaced"] = replace
+    return result
 
 
 @app.get("/api/import/templates")
@@ -46,48 +67,37 @@ def list_import_templates():
     }
 
 
-@app.get("/api/profiles")
-def list_profiles(db: Session = Depends(get_db)):
-    rows = db.query(Profile).order_by(Profile.id).all()
+@app.get("/api/datasets")
+def list_datasets(db: Session = Depends(get_db)):
+    rows = db.query(Dataset).order_by(Dataset.id).all()
     return {
         "data": [
-            {"id": p.id, "name": p.name, "user_id": p.user_id, "created_at": p.created_at}
-            for p in rows
+            {"id": d.id, "name": d.name, "created_at": d.created_at}
+            for d in rows
         ]
     }
 
 
-@app.post("/api/profiles")
-def create_profile(body: ProfileCreate, db: Session = Depends(get_db)):
-    if db.query(Profile).filter(Profile.name == body.name).first():
-        raise HTTPException(400, "Profile name already exists")
-    p = Profile(name=body.name)
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return {"id": p.id, "name": p.name, "user_id": p.user_id, "created_at": p.created_at}
-
-
-@app.patch("/api/profiles/{profile_id}")
-def update_profile(profile_id: int, body: ProfileUpdate, db: Session = Depends(get_db)):
-    p = db.query(Profile).filter(Profile.id == profile_id).first()
-    if not p:
-        raise HTTPException(404, "Profile not found")
-    other = db.query(Profile).filter(Profile.name == body.name, Profile.id != profile_id).first()
+@app.patch("/api/datasets/{dataset_id}")
+def update_dataset(dataset_id: int, body: DatasetUpdate, db: Session = Depends(get_db)):
+    d = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    other = db.query(Dataset).filter(Dataset.name == body.name, Dataset.id != dataset_id).first()
     if other:
-        raise HTTPException(400, "Profile name already exists")
-    p.name = body.name
+        raise HTTPException(400, "Dataset name already exists")
+    d.name = body.name
     db.commit()
-    db.refresh(p)
-    return {"id": p.id, "name": p.name, "user_id": p.user_id, "created_at": p.created_at}
+    db.refresh(d)
+    return {"id": d.id, "name": d.name, "created_at": d.created_at}
 
 
-@app.delete("/api/profiles/{profile_id}")
-def delete_profile(profile_id: int, db: Session = Depends(get_db)):
-    p = db.query(Profile).filter(Profile.id == profile_id).first()
-    if not p:
-        raise HTTPException(404, "Profile not found")
-    db.delete(p)
+@app.delete("/api/datasets/{dataset_id}")
+def delete_dataset(dataset_id: int, db: Session = Depends(get_db)):
+    d = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not d:
+        raise HTTPException(404, "Dataset not found")
+    db.delete(d)
     db.commit()
     return {"ok": True}
 
@@ -128,21 +138,56 @@ def get_klines(
         raise HTTPException(502, f"Failed to fetch klines: {type(e).__name__}")
 
 
+def _dataset_label_from_filename(filename: str) -> str:
+    base = os.path.basename(filename)
+    for ext in (".xlsx", ".xls", ".csv"):
+        if base.lower().endswith(ext):
+            base = base[: -len(ext)]
+            break
+    return (base.strip() or "未命名表格")[:128]
+
+
+def _find_or_create_dataset(db: Session, name: str) -> Dataset:
+    name = name.strip()[:128]
+    if not name:
+        raise HTTPException(400, "Invalid dataset name")
+    d = db.query(Dataset).filter(Dataset.name == name).first()
+    if d:
+        return d
+    d = Dataset(name=name)
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return d
+
+
 @app.post("/api/trades/import")
 async def import_trades(
-    request: Request,
     file: UploadFile = File(...),
     template: str = Query("langge"),
+    replace: bool = Query(True),
+    label: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    profile_id = get_profile_id(request, db)
-    if template not in TEMPLATES:
-        raise HTTPException(400, f"Unknown template. Supported: {list(TEMPLATES)}")
+    if template == "auto":
+        pass
+    elif template not in TEMPLATES:
+        raise HTTPException(400, f"Unknown template. Supported: auto, {list(TEMPLATES)}")
     if not file.filename:
         raise HTTPException(400, "Missing filename")
     fn = file.filename.lower()
     if not fn.endswith((".xlsx", ".xls", ".csv")):
         raise HTTPException(400, "Only .xlsx, .xls, .csv are supported")
+
+    ds_name = (label.strip() if label and label.strip() else _dataset_label_from_filename(file.filename))
+    dataset = _find_or_create_dataset(db, ds_name)
+    dataset_id = dataset.id
+
+    if replace:
+        db.query(TradeFill).filter(TradeFill.dataset_id == dataset_id).delete()
+        db.query(Trade).filter(Trade.dataset_id == dataset_id).delete()
+        db.commit()
+
     suffix = ".csv" if fn.endswith(".csv") else ".xlsx"
     tmp_path = ""
     try:
@@ -150,12 +195,50 @@ async def import_trades(
             content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
-        return trade_importer.parse_file(db, tmp_path, profile_id, template)
+        resolved = detect_template(tmp_path) if template == "auto" else template
+        result = trade_importer.parse_file(db, tmp_path, dataset_id, resolved)
+        result["template"] = resolved
+        result["dataset_id"] = dataset_id
+        result["dataset_name"] = dataset.name
+        result["replaced"] = replace
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, str(e))
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+def _trade_query(db: Session, dataset_id: int, symbol: Optional[str], start_date: Optional[int], end_date: Optional[int]):
+    q = db.query(Trade).filter(Trade.dataset_id == dataset_id)
+    if symbol:
+        normalized = normalize_symbol(symbol)
+        if not is_valid_symbol(normalized):
+            return None
+        q = q.filter(Trade.symbol == normalized)
+    if start_date:
+        q = q.filter(Trade.entry_time >= start_date)
+    if end_date:
+        q = q.filter(Trade.entry_time <= end_date)
+    return q
+
+
+def _trade_to_dict(t: Trade) -> dict:
+    return {
+        "id": t.id,
+        "symbol": t.symbol,
+        "direction": t.direction,
+        "leverage": t.leverage,
+        "entry_price": t.entry_price,
+        "exit_price": t.exit_price,
+        "profit": t.profit,
+        "profit_rate": t.profit_rate,
+        "margin": t.margin,
+        "entry_time": t.entry_time,
+        "exit_time": t.exit_time,
+    }
 
 
 @app.get("/api/trades")
@@ -165,50 +248,65 @@ def get_trades(
     start_date: Optional[int] = Query(None, description="Start timestamp (ms)"),
     end_date: Optional[int] = Query(None, description="End timestamp (ms)"),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=2000),
     db: Session = Depends(get_db),
 ):
-    profile_id = get_profile_id(request, db)
-    query = db.query(Trade).filter(Trade.profile_id == profile_id)
-    if symbol:
-        normalized = normalize_symbol(symbol)
-        if not is_valid_symbol(normalized):
-            return {"total": 0, "page": page, "limit": limit, "data": []}
-        query = query.filter(Trade.symbol == normalized)
-    if start_date:
-        query = query.filter(Trade.entry_time >= start_date)
-    if end_date:
-        query = query.filter(Trade.entry_time <= end_date)
+    dataset_id = get_dataset_id(request, db)
+    query = _trade_query(db, dataset_id, symbol, start_date, end_date)
+    if query is None:
+        return {"total": 0, "page": page, "limit": limit, "data": []}
 
-    trades = [t for t in query.order_by(Trade.entry_time.desc()).all() if is_valid_symbol(t.symbol)]
-    total = len(trades)
-    start_idx = (page - 1) * limit
-    trades = trades[start_idx:start_idx + limit]
+    total = query.count()
+    trades = (
+        query.order_by(Trade.entry_time.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
 
     return {
         "total": total,
         "page": page,
         "limit": limit,
+        "data": [_trade_to_dict(t) for t in trades if is_valid_symbol(t.symbol)],
+    }
+
+
+@app.get("/api/trades/{trade_id}/fills")
+def get_trade_fills(trade_id: int, request: Request, db: Session = Depends(get_db)):
+    dataset_id = get_dataset_id(request, db)
+    trade = db.query(Trade).filter(Trade.id == trade_id, Trade.dataset_id == dataset_id).first()
+    if not trade:
+        raise HTTPException(404, "Trade not found")
+    rows = (
+        db.query(TradeFill)
+        .filter(TradeFill.trade_id == trade_id)
+        .order_by(TradeFill.time_ms.asc())
+        .all()
+    )
+    return {
         "data": [
             {
-                "id": t.id,
-                "symbol": t.symbol,
-                "direction": t.direction,
-                "leverage": t.leverage,
-                "entry_price": t.entry_price,
-                "exit_price": t.exit_price,
-                "profit": t.profit,
-                "profit_rate": t.profit_rate,
-                "margin": t.margin,
-                "entry_time": t.entry_time,
-                "exit_time": t.exit_time,
+                "id": r.id,
+                "side": r.side,
+                "price": r.price,
+                "qty": r.qty,
+                "time_ms": r.time_ms,
+                "realized_pnl": r.realized_pnl,
             }
-            for t in trades
-        ],
+            for r in rows
+        ]
     }
+
+
+@app.get("/api/stats/symbols")
+def get_stats_symbols(request: Request, db: Session = Depends(get_db)):
+    dataset_id = get_dataset_id(request, db)
+    dist = trade_analyzer.symbol_distribution(db, dataset_id)
+    return {"trade_count": sum(dist.values()), "symbol_distribution": dist}
 
 
 @app.get("/api/stats/overview")
 def get_stats_overview(request: Request, db: Session = Depends(get_db)):
-    profile_id = get_profile_id(request, db)
-    return trade_analyzer.calculate_stats(db, profile_id)
+    dataset_id = get_dataset_id(request, db)
+    return trade_analyzer.calculate_stats(db, dataset_id)

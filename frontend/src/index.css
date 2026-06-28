@@ -1,37 +1,40 @@
 @import "tailwindcss";
-@plugin "daisyui";
-
-@theme {
-  /* Vercel/Linear Dark Theme Colors */
-  --color-base-100: #0A0A0B;
-  --color-base-200: #141414;
-  --color-base-300: #262626;
-  --color-base-content: #d1d4dc;
-
-  --color-primary: #3B82F6;
-  --color-secondary: #8B5CF6;
-  --color-accent: #06B6D4;
-  --color-neutral: #1F1F1F;
-
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-error: #EF4444;
-  --color-info: #3B82F6;
-
-  /* Custom colors */
-  --color-surface: #141414;
-  --color-elevated: #1A1A1A;
-  --color-border: #262626;
-  --color-border-hover: #333333;
-  --color-divider: #1F1F1F;
-  --color-text-primary: #FAFAFA;
-  --color-text-secondary: #A1A1A1;
-  --color-text-muted: #666666;
-  --color-profit: #22C55E;
-  --color-loss: #EF4444;
+@plugin "daisyui" {
+  themes: retraq --default;
 }
 
-/* DaisyUI theme configuration */
+/* Retraq — Anthropic-inspired tokens (see docs/DESIGN.md) */
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-base-100: #141413;
+  --color-base-200: #1f1e1d;
+  --color-base-300: #2a2928;
+  --color-base-content: #eceae6;
+
+  --color-primary: #d97757;
+  --color-primary-content: #141413;
+  --color-secondary: #9a9690;
+  --color-accent: #d97757;
+  --color-neutral: #2a2928;
+
+  --color-success: #3d8a5a;
+  --color-warning: #c9a227;
+  --color-error: #c45c5c;
+  --color-info: #6b6862;
+
+  --color-surface: #1f1e1d;
+  --color-elevated: #2a2928;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #eceae6;
+  --color-text-muted: #9a9690;
+  --color-profit: #3d8a5a;
+  --color-loss: #c45c5c;
+  --color-brand: #d97757;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
@@ -39,187 +42,169 @@
 
   [data-theme="dark"],
   :root {
-    --b1: 0 0% 4%;
-    --b2: 0 0% 8%;
-    --b3: 0 0% 15%;
-    --bc: 220 9% 84%;
-    --p: 217 91% 60%;
-    --pc: 0 0% 100%;
-    --s: 263 70% 60%;
-    --sc: 0 0% 100%;
-    --a: 186 94% 42%;
-    --ac: 0 0% 100%;
-    --n: 0 0% 12%;
-    --nc: 220 9% 84%;
-    --su: 142 71% 45%;
-    --suc: 0 0% 100%;
-    --wa: 38 92% 50%;
-    --wac: 0 0% 0%;
-    --er: 0 84% 60%;
-    --erc: 0 0% 100%;
-    --in: 217 91% 60%;
-    --inc: 0 0% 100%;
+    --b1: 20 4% 8%;
+    --b2: 30 3% 12%;
+    --b3: 30 3% 16%;
+    --bc: 40 10% 92%;
+    --p: 18 62% 59%;
+    --pc: 20 4% 8%;
+    --s: 30 5% 58%;
+    --sc: 20 4% 8%;
+    --a: 18 62% 59%;
+    --ac: 20 4% 8%;
+    --n: 30 3% 16%;
+    --nc: 40 10% 92%;
+    --su: 145 38% 39%;
+    --suc: 40 10% 92%;
+    --wa: 42 68% 47%;
+    --wac: 20 4% 8%;
+    --er: 0 48% 55%;
+    --erc: 40 10% 92%;
+    --in: 30 5% 42%;
+    --inc: 40 10% 92%;
     --rounded-box: 0.75rem;
     --rounded-btn: 0.5rem;
-    --rounded-badge: 1rem;
-    --animation-btn: 0.2s;
-    --animation-input: 0.2s;
+    --rounded-badge: 9999px;
+    --animation-btn: 0.15s;
+    --animation-input: 0.15s;
     --btn-focus-scale: 0.98;
     --border-btn: 1px;
     --tab-border: 1px;
     --tab-radius: 0.5rem;
   }
+
+  [data-theme="retraq"] {
+    color-scheme: dark;
+    --color-base-100: oklch(22% 0.01 80);
+    --color-base-200: oklch(26% 0.012 80);
+    --color-base-300: oklch(32% 0.014 80);
+    --color-base-content: oklch(93% 0.01 85);
+    --color-primary: oklch(68% 0.14 45);
+    --color-primary-content: oklch(22% 0.01 80);
+    --color-secondary: oklch(65% 0.02 80);
+    --color-secondary-content: oklch(22% 0.01 80);
+    --color-accent: oklch(68% 0.14 45);
+    --color-accent-content: oklch(22% 0.01 80);
+    --color-neutral: oklch(32% 0.014 80);
+    --color-neutral-content: oklch(93% 0.01 85);
+    --color-success: oklch(55% 0.1 155);
+    --color-warning: oklch(72% 0.12 85);
+    --color-error: oklch(58% 0.12 25);
+    --color-info: oklch(65% 0.02 80);
+  }
+
+  button,
+  a,
+  [role="button"],
+  label[for],
+  select,
+  summary {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, #d97757 55%, transparent);
+    outline-offset: 2px;
+  }
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
+  width: 100%;
   margin: 0;
   padding: 0;
-  background-color: #0A0A0B;
-  color: #d1d4dc;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overflow: hidden;
+  background-color: #141413;
+  color: #eceae6;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Smooth transitions for interactive elements */
-.btn, .card, .menu li, .tab {
-  transition: all 0.15s ease;
+.font-display {
+  font-family: var(--font-display);
 }
 
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.font-mono,
+.tabular-nums {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
 }
 
-::-webkit-scrollbar-track {
-  background: #141414;
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #333333;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #444444;
-}
-
-/* Custom animations for Learn page */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.app-shell {
+  background:
+    radial-gradient(ellipse 100% 60% at 50% -15%, rgba(217, 119, 87, 0.07), transparent 55%),
+    #141413;
 }
 
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.panel {
+  background: color-mix(in srgb, #1f1e1d 92%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
 }
 
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.panel-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.875rem 1.125rem;
 }
 
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+.panel-body {
+  padding: 0.875rem 1.125rem;
 }
 
-@keyframes glow {
-  0%, 100% {
-    box-shadow: 0 0 5px currentColor;
-  }
-  50% {
-    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
-  }
+.panel-card {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #2a2928;
+  padding: 1.125rem 1.25rem;
 }
 
-.animate-fade-in {
-  animation: fade-in 0.5s ease-out forwards;
+.panel-card-title {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #eceae6;
+  margin-bottom: 0.75rem;
 }
 
-.animate-slide-in-left {
-  animation: slide-in-left 0.5s ease-out forwards;
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.animate-slide-in-right {
-  animation: slide-in-right 0.5s ease-out forwards;
+.kpi-label {
+  font-size: 0.875rem;
+  color: #9a9690;
 }
 
-.animate-scale-in {
-  animation: scale-in 0.3s ease-out forwards;
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-.animate-glow {
-  animation: glow 2s ease-in-out infinite;
-}
-
-/* Staggered animation delays */
-.stagger-1 { animation-delay: 0.1s; }
-.stagger-2 { animation-delay: 0.2s; }
-.stagger-3 { animation-delay: 0.3s; }
-.stagger-4 { animation-delay: 0.4s; }
-.stagger-5 { animation-delay: 0.5s; }
-
-/* Card hover effects */
-.card-hover {
-  transition: all 0.3s ease;
-}
-
-.card-hover:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-}
-
-/* Gradient text animation */
-.gradient-text {
-  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent));
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradient-shift 3s ease infinite;
-}
-
-@keyframes gradient-shift {
-  0% { background-position: 0% center; }
-  50% { background-position: 100% center; }
-  100% { background-position: 0% center; }
+.btn,
+.tab {
+  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out,
+    opacity 0.15s ease-out;
 }

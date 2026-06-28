@@ -1,1 +1,0 @@
-export const ACTIVE_PROFILE_STORAGE_KEY = 'retraq.activeProfileId';

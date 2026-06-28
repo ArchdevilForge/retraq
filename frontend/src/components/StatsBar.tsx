@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useProfile } from '../context/ProfileContext';
+import { useDataset } from '../context/DatasetContext';
 import { fetchStats } from '../services/api';
 import type { StatsOverview } from '../services/api';
 
@@ -14,18 +14,18 @@ function StatCard({ label, value, description, valueColor }: { label: string; va
 }
 
 export default function StatsBar() {
-  const { activeProfileId } = useProfile();
+  const { activeDatasetId } = useDataset();
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (activeProfileId == null) return;
+    if (activeDatasetId == null) return;
     setLoading(true);
     fetchStats()
       .then(setStats)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeProfileId]);
+  }, [activeDatasetId]);
 
   if (loading) {
     return (

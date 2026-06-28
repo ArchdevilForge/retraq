@@ -1,15 +1,14 @@
 import axios from 'axios';
-import { ACTIVE_PROFILE_STORAGE_KEY } from '../constants/profileStorage';
+import { ACTIVE_DATASET_STORAGE_KEY } from '../constants/datasetStorage';
 
 axios.interceptors.request.use((config) => {
   const url = config.url ?? '';
-  const needsProfile =
-    url.includes('/api/trades') || url.includes('/api/stats/overview');
-  if (needsProfile) {
-    const id = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+  const needsDataset = url.includes('/api/trades') || url.includes('/api/stats/');
+  if (needsDataset) {
+    const id = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
     if (id) {
       config.headers = config.headers ?? {};
-      config.headers['X-Profile-Id'] = id;
+      config.headers['X-Dataset-Id'] = id;
     }
   }
   return config;
@@ -22,6 +21,20 @@ export interface Kline {
   low: number;
   close: number;
   volume: number;
+}
+
+export interface TradeFill {
+  id: number;
+  side: string;
+  price: number;
+  qty: number;
+  time_ms: number;
+  realized_pnl: number | null;
+}
+
+export async function fetchTradeFills(tradeId: number): Promise<TradeFill[]> {
+  const { data } = await axios.get<{ data: TradeFill[] }>(`/api/trades/${tradeId}/fills`);
+  return data.data;
 }
 
 export interface Trade {
@@ -47,30 +60,24 @@ export interface TradesResponse {
   data: Trade[];
 }
 
-export interface Profile {
+export interface Dataset {
   id: number;
   name: string;
-  user_id: number | null;
   created_at: string | null;
 }
 
-export async function fetchProfiles(): Promise<{ data: Profile[] }> {
-  const { data } = await axios.get<{ data: Profile[] }>('/api/profiles');
+export async function fetchDatasets(): Promise<{ data: Dataset[] }> {
+  const { data } = await axios.get<{ data: Dataset[] }>('/api/datasets');
   return data;
 }
 
-export async function createProfile(name: string): Promise<Profile> {
-  const { data } = await axios.post<Profile>('/api/profiles', { name });
+export async function updateDataset(id: number, name: string): Promise<Dataset> {
+  const { data } = await axios.patch<Dataset>(`/api/datasets/${id}`, { name });
   return data;
 }
 
-export async function updateProfile(id: number, name: string): Promise<Profile> {
-  const { data } = await axios.patch<Profile>(`/api/profiles/${id}`, { name });
-  return data;
-}
-
-export async function deleteProfile(id: number): Promise<void> {
-  await axios.delete(`/api/profiles/${id}`);
+export async function deleteDataset(id: number): Promise<void> {
+  await axios.delete(`/api/datasets/${id}`);
 }
 
 export async function fetchImportTemplates(): Promise<{ id: string; label: string }[]> {
@@ -116,15 +123,26 @@ export async function fetchKlines(
   throw lastError;
 }
 
+export interface SymbolStats {
+  trade_count: number;
+  symbol_distribution: Record<string, number>;
+}
+
+export async function fetchSymbolStats(): Promise<SymbolStats> {
+  const { data } = await axios.get<SymbolStats>('/api/stats/symbols');
+  return data;
+}
+
 export async function fetchTrades(
   filters?: { symbol?: string; start_date?: number; end_date?: number },
-  options?: { limit?: number; maxPages?: number },
+  options?: { limit?: number; maxPages?: number; page?: number },
 ): Promise<Trade[]> {
-  const limit = options?.limit ?? 500;
-  const maxPages = options?.maxPages ?? 1000;
+  const limit = options?.limit ?? 2000;
+  const maxPages = options?.maxPages ?? 20;
+  const startPage = options?.page ?? 1;
 
   const allTrades: Trade[] = [];
-  for (let page = 1; page <= maxPages; page += 1) {
+  for (let page = startPage; page < startPage + maxPages; page += 1) {
     const { data } = await axios.get<TradesResponse>('/api/trades', { params: { ...filters, page, limit } });
     allTrades.push(...data.data);
     if (allTrades.length >= data.total || data.data.length === 0) break;
@@ -133,17 +151,50 @@ export async function fetchTrades(
   return allTrades;
 }
 
+function importErrorMessage(err: unknown): string {
+  const ax = err as { response?: { status?: number; data?: { detail?: string } } };
+  const detail = ax.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  return '导入失败，请检查文件与模板';
+}
+
+export type ImportResult = {
+  total: number;
+  success: number;
+  failed: number;
+  dataset_id?: number;
+  dataset_name?: string;
+  replaced?: boolean;
+};
+
+export async function importSampleLangge(replace = true): Promise<ImportResult> {
+  const { data } = await axios.post<ImportResult>('/api/import/sample-langge', null, {
+    params: { replace },
+  });
+  return data;
+}
+
 export async function importTrades(
   file: File,
   template: string = 'langge',
-): Promise<{ total: number; success: number; failed: number }> {
+  options?: { replace?: boolean; label?: string },
+): Promise<ImportResult> {
   const formData = new FormData();
   formData.append('file', file);
-  const { data } = await axios.post('/api/trades/import', formData, {
-    params: { template },
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return data;
+  const label = options?.label ?? file.name.replace(/\.(xlsx|xls|csv)$/i, '');
+  try {
+    const { data } = await axios.post<ImportResult>('/api/trades/import', formData, {
+      params: {
+        template,
+        replace: options?.replace !== false,
+        label,
+      },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  } catch (err) {
+    throw new Error(importErrorMessage(err));
+  }
 }
 
 export interface StatsOverview {

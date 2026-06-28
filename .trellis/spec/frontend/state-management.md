@@ -6,38 +6,40 @@
 
 ## Overview
 
-- **Active profile**: `ProfileContext` + `localStorage` key `retraq.activeProfileId`.
-- All trade/stats/import API calls must send header **`X-Profile-Id`** (see `frontend/src/services/api.ts` axios interceptor).
-- Components that load trades or stats should refetch when `activeProfileId` changes (set loading while switching).
+- **Active dataset**: `DatasetContext` (`frontend/src/context/DatasetContext.tsx`) + `localStorage` key `retraq.activeDatasetId` (`constants/datasetStorage.ts`).
+- Trade/stats API calls send header **`X-Dataset-Id`** via axios interceptor in `services/api.ts`.
+- **`tradesRevision`**: bump after import (`notifyTradesChanged`) so `TradeList` refetches without full page reload.
+- **No ProfileContext** — one imported file = one `datasets` row; switch in top-bar `DatasetPicker`.
 
 ---
 
-## State Categories
+## Dataset lifecycle
 
-<!-- Local state, global state, server state, URL state -->
-
-(To be filled by the team)
-
----
-
-## When to Use Global State
-
-<!-- Criteria for promoting state to global -->
-
-(To be filled by the team)
+| Action | Behavior |
+|--------|----------|
+| Import | `POST /api/trades/import?template=auto` → `detect_template()` on backend → create/replace dataset by filename label |
+| Switch | `setActiveDatasetId` persists to localStorage; dependent hooks refetch |
+| Empty | `activeDatasetId == null` → trade endpoints skip header until user imports |
 
 ---
 
-## Server State
+## Server state
 
-<!-- How server data is cached and synchronized -->
-
-(To be filled by the team)
+- Pages fetch trades with `fetchTrades()`; pass `{ limit, maxPages }` for analysis aggregates.
+- Klines and fills are **local component state** in `ChartManagerInner` (not global).
 
 ---
 
-## Common Mistakes
+## UI feedback
 
-<!-- State management mistakes your team has made -->
+- Use **`ToastProvider` + `useToast()`** (DaisyUI `toast` + `alert`) — never `alert()` for import/errors.
 
-(To be filled by the team)
+---
+
+## Common mistakes
+
+| Wrong | Correct |
+|-------|---------|
+| Hardcode `binance_futures_trades` on import | `template=auto` for mixed langge/binance files |
+| Show dataset name in trade list header | Switch dataset only in top-bar picker |
+| `ProfileContext` / manual profile CRUD | `DatasetContext` + import only |

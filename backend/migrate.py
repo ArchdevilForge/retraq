@@ -1,76 +1,74 @@
-"""Startup migration: profiles, trade.profile_id, default / example data."""
-import os
+"""DB bootstrap + profiles → datasets one-time migration. No auto seed."""
 from sqlalchemy import inspect, text
-from sqlalchemy.orm import Session
 
-from database import engine, SessionLocal, Base
-from models import Profile, Trade
-from services.trade_importer import trade_importer
+from database import engine, Base
+from models import Dataset  # noqa: F401 — register models
 
-DEFAULT_LEGACY_NAME = "默认"
-EXAMPLE_PROFILE_NAME = "浪哥（示例）"
+LEGACY_DATASET_NAMES = ("默认", "浪哥（示例）")
 
 
-def _trades_has_profile_id() -> bool:
-    insp = inspect(engine)
-    if "trades" not in insp.get_table_names():
+def _table_exists(name: str) -> bool:
+    return name in inspect(engine).get_table_names()
+
+
+def _column_exists(table: str, col: str) -> bool:
+    if not _table_exists(table):
         return False
-    return "profile_id" in {c["name"] for c in insp.get_columns("trades")}
+    return col in {c["name"] for c in inspect(engine).get_columns(table)}
 
 
-def _add_profile_id_column():
+def _migrate_legacy_profiles() -> None:
+    if not _table_exists("profiles"):
+        return
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE trades ADD COLUMN profile_id INTEGER"))
+        if not _table_exists("datasets"):
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE datasets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(128) NOT NULL UNIQUE,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+        conn.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO datasets (id, name, created_at)
+                SELECT id, name, COALESCE(created_at, CURRENT_TIMESTAMP) FROM profiles
+                """
+            )
+        )
+        if _column_exists("trades", "profile_id") and not _column_exists("trades", "dataset_id"):
+            conn.execute(text("ALTER TABLE trades ADD COLUMN dataset_id INTEGER"))
+            conn.execute(text("UPDATE trades SET dataset_id = profile_id WHERE dataset_id IS NULL"))
+        conn.execute(text("DROP TABLE IF EXISTS profiles"))
+
+
+def _purge_legacy_default_datasets() -> None:
+    if not _table_exists("datasets"):
+        return
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        for name in LEGACY_DATASET_NAMES:
+            row = db.query(Dataset).filter(Dataset.name == name).first()
+            if row:
+                db.delete(row)
+        db.commit()
+    finally:
+        db.close()
 
 
 def ensure_database() -> None:
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        _migrate_profiles(db)
-    finally:
-        db.close()
-
-
-def _trade_count() -> int:
-    if not _trades_has_profile_id():
-        with engine.connect() as conn:
-            return int(conn.execute(text("SELECT COUNT(*) FROM trades")).scalar() or 0)
-    db = SessionLocal()
-    try:
-        return db.query(Trade).count()
-    finally:
-        db.close()
-
-
-def _migrate_profiles(db: Session) -> None:
-    has_col = _trades_has_profile_id()
-    trade_count = _trade_count()
-
-    if not has_col and trade_count > 0:
-        default_p = db.query(Profile).filter(Profile.name == DEFAULT_LEGACY_NAME).first()
-        if not default_p:
-            default_p = Profile(name=DEFAULT_LEGACY_NAME)
-            db.add(default_p)
-            db.commit()
-            db.refresh(default_p)
-        else:
-            db.commit()
-        _add_profile_id_column()
+    _migrate_legacy_profiles()
+    _purge_legacy_default_datasets()
+    if _table_exists("trades") and _column_exists("trades", "profile_id") and _column_exists("trades", "dataset_id"):
         with engine.begin() as conn:
             conn.execute(
-                text("UPDATE trades SET profile_id = :pid WHERE profile_id IS NULL"),
-                {"pid": default_p.id},
+                text("UPDATE trades SET dataset_id = profile_id WHERE dataset_id IS NULL")
             )
-        return
-
-    if trade_count == 0 and db.query(Profile).count() == 0:
-        if not has_col:
-            _add_profile_id_column()
-        example = Profile(name=EXAMPLE_PROFILE_NAME)
-        db.add(example)
-        db.commit()
-        db.refresh(example)
-        excel_path = os.path.join(os.path.dirname(__file__), "..", "1.xlsx")
-        if os.path.exists(excel_path):
-            trade_importer.parse_file(db, excel_path, example.id, "langge")

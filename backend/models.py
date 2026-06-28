@@ -3,12 +3,11 @@ from sqlalchemy.sql import func
 from database import Base
 
 
-class Profile(Base):
-    __tablename__ = "profiles"
+class Dataset(Base):
+    __tablename__ = "datasets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(128), nullable=False, unique=True)
-    user_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -34,7 +33,7 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
     symbol = Column(String(32), nullable=False)
     direction = Column(String(8), nullable=False)
     leverage = Column(Float, default=1.0)
@@ -48,5 +47,22 @@ class Trade(Base):
 
     __table_args__ = (
         Index("ix_trade_symbol", "symbol"),
-        Index("ix_trade_profile_entry", "profile_id", "entry_time"),
+        Index("ix_trade_dataset_entry", "dataset_id", "entry_time"),
     )
+
+
+class TradeFill(Base):
+    """Per-fill from exchange export (e.g. Binance trade history)."""
+
+    __tablename__ = "trade_fills"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, index=True)
+    trade_id = Column(Integer, ForeignKey("trades.id", ondelete="CASCADE"), nullable=True, index=True)
+    symbol = Column(String(32), nullable=False)
+    side = Column(String(8), nullable=False)  # BUY | SELL
+    price = Column(Float, nullable=False)
+    qty = Column(Float, nullable=False)
+    time_ms = Column(BigInteger, nullable=False)
+    realized_pnl = Column(Float, nullable=True)
+    order_id = Column(String(64), nullable=True)

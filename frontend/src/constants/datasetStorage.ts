@@ -1,0 +1,1 @@
+export const ACTIVE_DATASET_STORAGE_KEY = 'retraq.activeDatasetId';
