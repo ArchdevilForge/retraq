@@ -25,7 +25,6 @@ docker run -d --name retraq -p 8080:8080 -v retraq-data:/data ghcr.io/xeron2000/
 |------|------|
 | 交割单表格 | 表头含「交易对」；示例 `samples/bit-langge-delivery-example.xlsx` |
 | 币安 U 本位合约交易历史 | [下载中心](https://www.binance.com/zh-CN/my/download-center?type=trade-futures-trade-history&child-type=trade-futures-trade-history-u) |
-| 币安 U 本位仓位历史 | [下载中心](https://www.binance.com/zh-CN/my/download-center?type=trade-futures-position-history&child-type=trade-futures-position-history-u) |
 
 库为空时需先导入；K 线需联网（默认 OKX）。
 
