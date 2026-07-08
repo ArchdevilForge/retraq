@@ -16,7 +16,7 @@
 
 **请只在本地或可信内网使用。** 无登录、无鉴权；暴露到公网则他人可读写你的数据。
 
-## 快速开始（推荐：Docker Compose + 官方镜像）
+## 快速开始（Docker Compose）
 
 ```bash
 git clone https://github.com/Xeron2000/retraq.git && cd retraq
@@ -24,12 +24,6 @@ docker compose up -d
 ```
 
 浏览器打开 **http://localhost:8080**。数据持久化在 Docker 卷 `retraq-data`（容器内 `/data`），删容器不删库。
-
-等价单容器命令：
-
-```bash
-docker run -d --name retraq -p 8080:8080 -v retraq-data:/data ghcr.io/xeron2000/retraq:latest
-```
 
 ## 导入数据
 
