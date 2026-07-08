@@ -6,8 +6,8 @@
 
 ## Overview
 
-- **Stack**: React 19, Tailwind 4, DaisyUI 5 (`data-theme="retraq"`), Lucide icons.
-- **Design tokens**: `docs/DESIGN.md`, `frontend/src/index.css` @theme, brand accent `#D97757`.
+- **Stack**: React 19, Tailwind 4, OpenCode `oc-*` design system (`frontend/src/styles/opencode.css`). Lucide icons.
+- **Design tokens**: `docs/DESIGN.md`, `frontend/src/styles/opencode.css`, interactive `#7698FD`, brand `#FAB283`.
 - **Layout**: Single-window replay — `overflow-hidden` on shell; panels scroll internally.
 
 ---
@@ -29,7 +29,7 @@
 
 ## Analysis page
 
-- KPI **stats only on 总览 tab**; DaisyUI `stats`, `card card-border`, `table-zebra`.
+- KPI **stats only on 总览 tab**; use `oc-stat-grid` / `oc-card`.
 - No embedded strategy copy — statistics from current dataset only.
 
 ---

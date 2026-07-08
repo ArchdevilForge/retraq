@@ -270,9 +270,6 @@ class KlineService:
         cached = self._query_range(db, symbol, timeframe, start_ts, end_ts)
         if cached:
             return [self._to_dict(k) for k in cached]
-
-        if cached:
-            return [self._to_dict(k) for k in cached]
         raise last_error or RuntimeError("Failed to fetch klines")
 
     def _to_dict(self, k: Kline) -> dict:

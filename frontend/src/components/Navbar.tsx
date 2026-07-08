@@ -1,45 +1,53 @@
+import { useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { CandlestickChart, ChartNoAxesCombined, Sparkles } from 'lucide-react';
 import DatasetPicker from './DatasetPicker';
+import { useTheme } from '../context/ThemeContext';
+import { useFadeIn } from '../motion';
 
-function navClass({ isActive }: { isActive: boolean }) {
-  return `flex cursor-pointer items-center gap-2.5 rounded-lg px-4 py-2 text-[0.9375rem] font-medium transition-colors duration-150 ${
-    isActive
-      ? 'bg-[#D97757] text-[#141413]'
-      : 'text-base-content/80 hover:bg-white/[0.06] hover:text-base-content'
-  }`;
+function navTabClass(isActive: boolean) {
+  return `oc-tab${isActive ? ' oc-tab--active' : ''}`;
 }
 
 function Navbar() {
+  const headerRef = useRef<HTMLElement>(null);
+  const { theme, toggleTheme } = useTheme();
+  useFadeIn(headerRef);
+
   return (
-    <header className="relative z-50 grid h-[3.25rem] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 overflow-visible border-b border-white/[0.08] bg-base-200/90 px-4 backdrop-blur-md">
-      <div className="flex min-w-0 items-center gap-3 justify-self-start">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D97757]/15 text-[#D97757] ring-1 ring-[#D97757]/25">
-          <CandlestickChart className="h-5 w-5" strokeWidth={2} />
-        </div>
-        <div>
-          <div className="font-display text-xl font-semibold tracking-tight text-base-content">Retraq</div>
-          <div className="text-sm text-base-content/45">交易复盘</div>
-        </div>
-      </div>
-
-      <nav className="justify-self-center">
-        <div className="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-base-300/40 p-1">
-          <NavLink to="/replay" className={navClass}>
-            <Sparkles className="h-[1.125rem] w-[1.125rem]" strokeWidth={2} />
-            复盘
+    <>
+      <a href="#main-content" className="oc-skip-link">
+        跳到主内容
+      </a>
+      <header ref={headerRef} className="oc-navbar">
+        <div className="oc-navbar__start">
+          <NavLink to="/replay" className="oc-brand-title" translate="no">
+            Retraq
           </NavLink>
-          <NavLink to="/analysis" className={navClass}>
-            <ChartNoAxesCombined className="h-[1.125rem] w-[1.125rem]" strokeWidth={2} />
-            分析
-          </NavLink>
+          <nav className="oc-navbar__nav" aria-label="主菜单">
+            <div className="oc-tabs">
+              <NavLink to="/replay" className={({ isActive }) => navTabClass(isActive)}>
+                复盘
+              </NavLink>
+              <NavLink to="/analysis" className={({ isActive }) => navTabClass(isActive)}>
+                分析
+              </NavLink>
+            </div>
+          </nav>
         </div>
-      </nav>
 
-      <div className="flex min-w-0 items-center justify-self-end">
-        <DatasetPicker />
-      </div>
-    </header>
+        <div className="oc-navbar__actions">
+          <button
+            type="button"
+            className="oc-btn oc-btn--sm oc-btn--secondary"
+            onClick={toggleTheme}
+            aria-label={theme === 'light' ? '切换到深色主题' : '切换到浅色主题'}
+          >
+            {theme === 'light' ? '深色' : '浅色'}
+          </button>
+          <DatasetPicker />
+        </div>
+      </header>
+    </>
   );
 }
 

@@ -12,4 +12,14 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          charts: ['lightweight-charts'],
+          motion: ['gsap', '@gsap/react'],
+        },
+      },
+    },
+  },
 })

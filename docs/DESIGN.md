@@ -1,51 +1,42 @@
-# Retraq — Design System (Anthropic-inspired)
+# Retraq — Design System (opencode.ai website)
+
+Visual language from [opencode.ai](https://opencode.ai/) marketing site — **not** OpenCode Desktop `packages/ui` (OC-2).
+
+## Implementation
+
+- **Tokens + components**: `frontend/src/styles/opencode.css` (`oc-*` classes)
+- **Tailwind bridge**: `frontend/src/index.css` `@theme`
+- **Do not use DaisyUI component classes** in new UI
 
 ## Color strategy
 
-**Restrained**: warm tinted neutrals + terracotta accent ≤12% of chrome. PnL uses semantic success/error only.
+Warm cream canvas `#fdfcfc`, ink `#201d1d`, hairline borders. **Light / dark** via `data-theme` + navbar toggle (`ThemeProvider`). Chart colors read `--oc-chart-*` CSS vars and re-apply on theme change.
 
-| Role | Light (optional) | Dark (default) |
-|------|------------------|----------------|
-| Canvas | `#FAF9F5` | `#141413` |
-| Surface | `#F5F4F0` | `#1F1E1D` |
-| Elevated | `#FFFFFF` | `#2A2928` |
-| Border | `rgba(31,31,31,0.08)` | `rgba(255,255,255,0.08)` |
-| Text primary | `#1F1E1D` | `#ECEAE6` |
-| Text muted | `#6B6862` | `#9A9690` |
-| Accent (brand) | `#C15F3C` | `#D97757` |
-| Accent hover | `#A84E2F` | `#E8956F` |
-| Focus ring | `#D97757` @ 40% | same |
+## Color strategy
 
-Semantic (do not use as brand):
-
-- Profit: `#3D8A5A` (muted green)
-- Loss: `#C45C5C` (muted red)
+Monochrome chrome; semantic Apple HIG colors for PnL (`#30D158` / `#FF3B30`). Chart panel uses theme-aware `--oc-chart-bg` (light `#f1eeee`, dark `#201d1d`).
 
 ## Typography
 
-- **Display / titles**: Source Serif 4 — editorial, Anthropic-adjacent warmth.
-- **UI / body**: Inter — neutral, highly legible at 16px base.
-- **Data / prices**: IBM Plex Mono — tabular numbers.
+100% IBM Plex Mono (Berkeley Mono substitute). Uppercase section labels. Body 14–16px, KPI 20px tabular.
 
-Scale: 16px base, titles 1.125–1.5rem, KPI numbers 1.375–1.75rem.
+## Layout
 
-## Elevation & panels
+Shared **2px grid borders** between panels (`oc-workbench`), like opencode.ai section blocks. No shadows, no pill chrome.
 
-- Panels: 1px border `white/8%`, radius 12px, background surface @ 85% opacity.
-- No nested card-in-card; one surface level per region.
-- Navbar: 52px, blur, bottom border only.
+## Components (oc-*)
+
+| Class | Website equivalent |
+|-------|-------------------|
+| `oc-navbar`, `oc-tabs`, `oc-tab` | manpage header + bordered segment nav |
+| `oc-btn--primary/secondary/ghost` | ink CTA + hairline secondary |
+| `oc-input-wrap` | bordered command input |
+| `panel`, `oc-workbench` | cream section grid |
+| `oc-chart-shell` | dark TUI hero panel |
+| `oc-chip` | uppercase filter tag |
+| `oc-stat-grid` | bordered KPI grid |
+| `oc-empty__desc::before` | `[+]` ASCII bullet prefix |
 
 ## Motion
 
-- 150–200ms ease-out on color/opacity only.
-- Respect `prefers-reduced-motion`.
-
-## Components
-
-- Primary button: terracotta fill, no gradient.
-- Tabs: boxed, active = accent tint bg, not full primary block unless nav.
-- Tables: `table-sm`, monospace for numbers.
-
-## Icons
-
-Lucide only, 20–22px in nav, stroke 2.
+120ms ease on color/background only. Respect `prefers-reduced-motion`.

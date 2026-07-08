@@ -288,8 +288,12 @@ class TradeImporter:
         if pd.isna(rate):
             return None
         if isinstance(rate, str):
-            return float(rate.replace("%", "")) / 100
-        return float(rate)
+            return float(rate.replace("%", "").strip()) / 100
+        v = float(rate)
+        # Langge sheets may store whole percents (10) or decimals (0.1); API uses 0–1 for fmtPct.
+        if abs(v) > 1:
+            return v / 100
+        return v
 
     def _parse_timestamp(self, ts) -> int | None:
         if pd.isna(ts):

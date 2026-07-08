@@ -12,10 +12,10 @@ Individual traders reviewing their own history; desktop-first, long sessions, da
 
 **product** — design serves clarity and trust; not marketing flair.
 
-## Brand tone (Anthropic-aligned)
+## Brand tone (OpenCode-aligned devtool)
 
-- Calm, literate, trustworthy — tools for thinking, not casino UI.
-- Warm neutrals over cold blue-gray; one restrained terracotta accent.
+- Calm, precise, trustworthy — tools for thinking, not casino UI.
+- Neutral grey chrome; warm peach accent for active states only.
 - Generous whitespace in chrome; density only in data tables/lists.
 - No neon profit green as brand color; semantic green/red only for PnL.
 

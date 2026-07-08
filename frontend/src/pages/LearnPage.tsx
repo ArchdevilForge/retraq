@@ -137,12 +137,13 @@ export default function LearnPage() {
   const [activeTab, setActiveTab] = useState(0);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-base-100">
-      <div className="tabs tabs-boxed tabs-xs shrink-0 border-b border-base-300 bg-base-200 px-2 py-1">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--background-base)]">
+      <div className="oc-tabs oc-tabs--compact shrink-0 border-b border-[var(--border-weaker-base)] px-3 py-2">
         {tabs.map((tab, i) => (
           <button
             key={i}
-            className={`tab ${activeTab === i ? 'tab-active' : ''}`}
+            type="button"
+            className={`oc-tab${activeTab === i ? ' oc-tab--active' : ''}`}
             onClick={() => setActiveTab(i)}
           >
             {tab}
@@ -150,26 +151,25 @@ export default function LearnPage() {
         ))}
       </div>
 
-      {/* 内容区 */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2 text-xs">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 text-[13px]">
         {/* 入门概念 */}
         {activeTab === 0 && (
           <div className="space-y-3">
             {concepts.map((item, i) => (
-              <div key={i} className="bg-base-200 rounded-lg p-4">
+              <div key={i} className="oc-card oc-card--bordered">
                 <div className="flex items-center gap-2 mb-2">
-                  <BookOpen className="w-4 h-4 text-primary" />
+                  <BookOpen className="h-4 w-4 oc-text-brand" />
                   <span className="font-semibold">{item.title}</span>
                 </div>
-                <p className="text-base-content/80 text-sm mb-2">{item.content}</p>
+                <p className="mb-2 text-[13px] oc-text-muted">{item.content}</p>
                 {item.highlight && (
-                  <div className="text-sm text-success flex items-start gap-2">
+                  <div className="flex items-start gap-2 text-[13px] oc-text-profit">
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.highlight}</span>
                   </div>
                 )}
                 {item.warning && (
-                  <div className="text-sm text-error flex items-start gap-2 mt-1">
+                  <div className="mt-1 flex items-start gap-2 text-[13px] oc-text-loss">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.warning}</span>
                   </div>
@@ -189,19 +189,19 @@ export default function LearnPage() {
         {activeTab === 1 && (
           <div className="space-y-4">
             {tradingSteps.map((step, i) => (
-              <div key={i} className="bg-base-200 rounded-lg p-4">
+              <div key={i} className="oc-card oc-card--bordered">
                 <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="w-4 h-4 text-[#D97757]" />
+                  <TrendingUp className="h-4 w-4 oc-text-brand" />
                   <span className="font-semibold">{step.title}</span>
                 </div>
-                <p className="text-base-content/60 text-sm mb-3">{step.desc}</p>
+                <p className="mb-3 text-[13px] oc-text-faint">{step.desc}</p>
                 
                 {step.seasons && (
                   <div className="space-y-2">
                     {step.seasons.map((s, j) => (
-                      <div key={j} className="bg-base-300 rounded p-2">
+                      <div key={j} className="rounded-md bg-[var(--surface-base-active)] p-2">
                         <span className="font-medium text-sm">{s.name}</span>
-                        <p className="text-xs text-base-content/70 mt-1">{s.desc}</p>
+                        <p className="mt-1 text-[12px] oc-text-faint">{s.desc}</p>
                       </div>
                     ))}
                   </div>
@@ -211,8 +211,8 @@ export default function LearnPage() {
                   <div className="space-y-2">
                     {step.points.map((p, j) => (
                       <div key={j} className="flex gap-2 text-sm">
-                        <span className="badge badge-sm badge-outline shrink-0">{p.label}</span>
-                        <span className="text-base-content/80">{p.desc}</span>
+                        <span className="oc-badge shrink-0">{p.label}</span>
+                        <span className="oc-text-muted">{p.desc}</span>
                       </div>
                     ))}
                   </div>
@@ -221,9 +221,9 @@ export default function LearnPage() {
                 {step.buyPoints && (
                   <div className="space-y-2">
                     {step.buyPoints.map((p, j) => (
-                      <div key={j} className="bg-base-300 rounded p-2">
-                        <span className="font-medium text-sm text-primary">{p.name}</span>
-                        <p className="text-xs text-base-content/70 mt-1">{p.desc}</p>
+                      <div key={j} className="rounded-md bg-[var(--surface-base-active)] p-2">
+                        <span className="text-[13px] font-medium oc-text-brand">{p.name}</span>
+                        <p className="mt-1 text-[12px] oc-text-faint">{p.desc}</p>
                       </div>
                     ))}
                   </div>
@@ -233,8 +233,8 @@ export default function LearnPage() {
                   <div className="space-y-2">
                     {step.rules.map((r, j) => (
                       <div key={j} className="flex gap-2 text-sm">
-                        <span className="badge badge-sm badge-warning shrink-0">{r.label}</span>
-                        <span className="text-base-content/80">{r.desc}</span>
+                        <span className="oc-badge shrink-0 oc-text-brand">{r.label}</span>
+                        <span className="oc-text-muted">{r.desc}</span>
                       </div>
                     ))}
                   </div>
@@ -248,28 +248,28 @@ export default function LearnPage() {
         {activeTab === 2 && (
           <div className="space-y-3">
             {moneyRules.map((item, i) => (
-              <div key={i} className="bg-base-200 rounded-lg p-4">
+              <div key={i} className="oc-card oc-card--bordered">
                 <div className="flex items-center gap-2 mb-2">
                   <Wallet className="w-4 h-4 text-accent" />
                   <span className="font-semibold">{item.title}</span>
                 </div>
-                <p className="text-base-content/80 text-sm mb-2">{item.content}</p>
+                <p className="mb-2 text-[13px] oc-text-muted">{item.content}</p>
                 
                 {item.steps && (
-                  <ul className="text-sm text-base-content/70 list-disc list-inside mb-2">
+                  <ul className="mb-2 list-inside list-disc text-[13px] oc-text-faint">
                     {item.steps.map((s, j) => <li key={j}>{s}</li>)}
                   </ul>
                 )}
                 
                 {item.highlight && (
-                  <div className="text-sm text-success flex items-start gap-2">
+                  <div className="flex items-start gap-2 text-[13px] oc-text-profit">
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.highlight}</span>
                   </div>
                 )}
                 
                 {item.warning && (
-                  <div className="text-sm text-error flex items-start gap-2">
+                  <div className="flex items-start gap-2 text-[13px] oc-text-loss">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.warning}</span>
                   </div>
@@ -278,8 +278,8 @@ export default function LearnPage() {
                 {item.limits && (
                   <div className="flex gap-4 mt-2">
                     {item.limits.map((l, j) => (
-                      <div key={j} className="badge badge-lg badge-outline">
-                        {l.type}：<span className="text-warning ml-1">{l.max}</span>
+                      <div key={j} className="oc-chip">
+                        {l.type}：<span className="ml-1 oc-text-brand">{l.max}</span>
                       </div>
                     ))}
                   </div>
@@ -293,22 +293,22 @@ export default function LearnPage() {
         {activeTab === 3 && (
           <div className="space-y-3">
             {mindsetRules.map((item, i) => (
-              <div key={i} className="bg-base-200 rounded-lg p-4">
+              <div key={i} className="oc-card oc-card--bordered">
                 <div className="flex items-center gap-2 mb-2">
-                  <Brain className="w-4 h-4 text-warning" />
+                  <Brain className="h-4 w-4 oc-text-brand" />
                   <span className="font-semibold">{item.title}</span>
                 </div>
-                <p className="text-base-content/80 text-sm mb-2">{item.content}</p>
+                <p className="mb-2 text-[13px] oc-text-muted">{item.content}</p>
                 
                 {item.highlight && (
-                  <div className="text-sm text-success flex items-start gap-2 mb-1">
+                  <div className="mb-1 flex items-start gap-2 text-[13px] oc-text-profit">
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.highlight}</span>
                   </div>
                 )}
                 
                 {item.warning && (
-                  <div className="text-sm text-error flex items-start gap-2">
+                  <div className="flex items-start gap-2 text-[13px] oc-text-loss">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{item.warning}</span>
                   </div>
@@ -322,11 +322,11 @@ export default function LearnPage() {
         {activeTab === 4 && (
           <div className="space-y-2">
             {fatalErrors.map((error, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-base-200 rounded-lg">
-                <span className="badge badge-error shrink-0">{i + 1}</span>
+              <div key={i} className="flex items-start gap-3 rounded-md bg-[var(--surface-base-active)] p-3">
+                <span className="oc-badge shrink-0 oc-text-loss">{i + 1}</span>
                 <div>
                   <div className="font-medium text-sm">{error.title}</div>
-                  <div className="text-xs text-base-content/60 mt-1">{error.desc}</div>
+                  <div className="mt-1 text-[12px] oc-text-faint">{error.desc}</div>
                 </div>
               </div>
             ))}

@@ -1,4 +1,5 @@
 import type { Time } from 'lightweight-charts';
+import type { RulerDrawStyle } from '../utils/chartTheme';
 
 export type RulerCorner = { time: Time; price: number; x: number; y: number };
 
@@ -46,6 +47,7 @@ export function drawRulerOnCanvas(
   a: RulerCorner,
   b: RulerCorner,
   measure: RulerMeasure,
+  style: RulerDrawStyle,
 ) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -61,8 +63,8 @@ export function drawRulerOnCanvas(
   const top = Math.min(y1, y2);
   const bottom = Math.max(y1, y2);
 
-  ctx.fillStyle = 'rgba(217, 119, 87, 0.12)';
-  ctx.strokeStyle = 'rgba(217, 119, 87, 0.85)';
+  ctx.fillStyle = style.rulerFill;
+  ctx.strokeStyle = style.rulerStroke;
   ctx.lineWidth = 1;
   ctx.fillRect(left, top, right - left, bottom - top);
   ctx.strokeRect(left, top, right - left, bottom - top);
@@ -77,13 +79,13 @@ export function drawRulerOnCanvas(
   const sign = measure.priceDelta >= 0 ? '+' : '';
   const label = `${sign}${measure.priceDelta.toFixed(4)} (${sign}${measure.pricePct.toFixed(2)}%) · ${measure.bars} 根 · ${formatDuration(measure.durationSec)}`;
   const pad = 6;
-  ctx.font = '12px Inter, system-ui, sans-serif';
+  ctx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
   const tw = ctx.measureText(label).width;
   const lx = Math.min(x1, x2) + pad;
   const ly = Math.min(y1, y2) - pad;
-  ctx.fillStyle = 'rgba(20, 20, 19, 0.92)';
+  ctx.fillStyle = style.rulerLabelBg;
   ctx.fillRect(lx - 2, ly - 14, tw + pad * 2, 18);
-  ctx.fillStyle = '#ECEAE6';
+  ctx.fillStyle = style.rulerLabelText;
   ctx.fillText(label, lx + pad - 2, ly);
 }
 

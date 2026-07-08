@@ -15,10 +15,10 @@ type ToastApi = {
 const ToastContext = createContext<ToastApi | null>(null);
 
 const kindClass: Record<ToastKind, string> = {
-  info: 'alert-info',
-  success: 'alert-success',
-  warning: 'alert-warning',
-  error: 'alert-error',
+  info: 'oc-toast--info',
+  success: 'oc-toast--success',
+  warning: 'oc-toast--warning',
+  error: 'oc-toast--error',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -37,9 +37,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast toast-top toast-end z-[300] w-[min(24rem,92vw)]">
+      <div className="oc-toast-stack">
         {items.map((t) => (
-          <div key={t.id} role="alert" className={`alert ${kindClass[t.kind]} text-sm shadow-lg`}>
+          <div key={t.id} role="alert" className={`oc-toast ${kindClass[t.kind]}`}>
             <span className="break-words">{t.message}</span>
           </div>
         ))}

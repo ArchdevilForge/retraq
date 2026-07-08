@@ -5,8 +5,8 @@ axios.interceptors.request.use((config) => {
   const url = config.url ?? '';
   const path = url.split('?')[0];
   const needsDataset =
-    path.includes('/api/stats/') ||
-    (path.includes('/api/trades') && !path.endsWith('/import'));
+    path.startsWith('/api/stats/') ||
+    (path.startsWith('/api/trades') && !path.startsWith('/api/trades/import'));
   if (needsDataset) {
     const id = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
     if (id) {
@@ -26,9 +26,19 @@ export interface Kline {
   volume: number;
 }
 
+/** Backend `/api/klines` row shape (timestamp ms). */
+export interface KlineApiRow {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface TradeFill {
   id: number;
-  side: string;
+  side: 'BUY' | 'SELL';
   price: number;
   qty: number;
   time_ms: number;
@@ -43,18 +53,20 @@ export async function fetchTradeFills(tradeId: number): Promise<TradeFill[]> {
 export interface Trade {
   id: number;
   symbol: string;
-  direction: string;
+  direction: 'long' | 'short';
   leverage: number;
   entry_price: number;
   exit_price: number | null;
   profit: number | null;
+  /** Decimal ratio (0.1 = 10%); matches Intl percent formatting. */
   profit_rate: number | null;
   margin: number | null;
   entry_time: number;
   exit_time: number | null;
 }
 
-export type Timeframe = '5m' | '15m' | '1h' | '4h' | '1d';
+export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const;
+export type Timeframe = (typeof TIMEFRAMES)[number];
 
 export interface TradesResponse {
   total: number;
@@ -105,8 +117,8 @@ export async function fetchKlines(
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const { data } = await axios.get(url, requestConfig);
-      return data.data.map((k: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+      const { data } = await axios.get<{ data: KlineApiRow[] }>(url, requestConfig);
+      return data.data.map((k) => ({
         time: Math.floor(k.timestamp / 1000),
         open: k.open,
         high: k.high,

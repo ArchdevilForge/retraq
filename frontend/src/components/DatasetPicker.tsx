@@ -81,19 +81,17 @@ export default function DatasetPicker() {
     createPortal(
       <div
         ref={panelRef}
-        className="fixed z-[200] overflow-hidden rounded-lg border border-white/[0.08] bg-base-200 py-1 shadow-xl"
+        className="oc-dropdown fixed z-[200] max-h-64 overflow-y-auto py-1"
         style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width }}
       >
-        <ul role="listbox" className="max-h-64 overflow-y-auto">
+        <ul role="listbox">
           {datasets.map((p) => {
             const selected = p.id === activeDatasetId;
             return (
               <li key={p.id} role="option" aria-selected={selected}>
                 <button
                   type="button"
-                  className={`flex w-full cursor-pointer items-start gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                    selected ? 'bg-[#D97757]/15 text-[#D97757]' : 'hover:bg-base-300/60'
-                  }`}
+                  className={`oc-dropdown__item${selected ? ' oc-dropdown__item--selected' : ''}`}
                   title={p.name}
                   onClick={() => {
                     setActiveDatasetId(p.id);
@@ -101,7 +99,7 @@ export default function DatasetPicker() {
                   }}
                 >
                   <span
-                    className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${selected ? 'bg-[#D97757]' : 'bg-base-content/20'}`}
+                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
                   />
                   <span className="min-w-0 break-all leading-snug">{p.name}</span>
                 </button>
@@ -121,23 +119,25 @@ export default function DatasetPicker() {
         accept=".xlsx,.xls,.csv"
         className="hidden"
         disabled={importBusy}
+        aria-label="导入表格文件"
         onChange={(e) => onFile(e.target.files?.[0] ?? null)}
       />
       <button
         type="button"
-        className="btn btn-ghost btn-square h-11 min-h-11 w-11 rounded-xl border border-white/[0.08] bg-base-100/40"
+        className="oc-icon-btn oc-icon-btn--md oc-icon-btn--secondary"
         title="导入表格（自动识别交割单 / 币安）"
+        aria-label="导入表格"
         disabled={importBusy}
         onClick={() => fileRef.current?.click()}
       >
-        <Upload className="h-4 w-4 text-[#D97757]" />
+        <Upload className="h-4 w-4 oc-text-brand" aria-hidden />
       </button>
 
       <button
         ref={triggerRef}
         type="button"
         disabled={loading || datasets.length === 0}
-        className="btn btn-ghost h-11 min-h-11 min-w-[8rem] max-w-[min(18rem,32vw)] shrink justify-between gap-2 rounded-xl border border-white/[0.08] bg-base-100/40 px-3 font-normal normal-case"
+        className="oc-btn oc-btn--md oc-btn--secondary min-w-[8rem] max-w-[min(18rem,32vw)] shrink justify-between font-normal normal-case"
         title={active?.name ?? '切换表格'}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -147,12 +147,13 @@ export default function DatasetPicker() {
         }}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Database className="h-4 w-4 shrink-0 text-[#D97757]" aria-hidden />
-          <span className="truncate text-[0.9375rem]">
-            {active ? truncateMiddle(active.name, 42) : '无表格'}
-          </span>
+          <Database className="h-4 w-4 shrink-0 oc-text-brand" aria-hidden />
+          <span className="truncate">{active ? truncateMiddle(active.name, 42) : '无表格'}</span>
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 opacity-60 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 opacity-60 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
       </button>
       {listPanel}
     </div>

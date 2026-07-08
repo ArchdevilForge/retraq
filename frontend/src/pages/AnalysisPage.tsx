@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import AnalysisInsights from '../components/AnalysisInsights';
+import EmptyDataset from '../components/EmptyDataset';
 import { useDataset } from '../context/DatasetContext';
 import { fetchTrades } from '../services/api';
 import type { Trade } from '../services/api';
+import { usePageEnter } from '../motion';
+import { fmtMoney, fmtPct } from '../utils/format';
 import {
   analyzeTimePatterns,
   analyzeBehavior,
@@ -12,17 +17,17 @@ import {
 
 type TabId = 'overview' | 'behavior' | 'time' | 'risk';
 
-const fmt$ = (v: number | null | undefined) =>
-  v == null ? '—' : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtPct = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
+const TAB_IDS: TabId[] = ['overview', 'behavior', 'time', 'risk'];
+
+function isTabId(v: string | null): v is TabId {
+  return v != null && TAB_IDS.includes(v as TabId);
+}
 
 function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`card card-border border-white/[0.08] bg-base-200/80 shadow-none ${className}`}>
-      <div className="card-body gap-3 p-4 sm:p-5">
-        <h2 className="card-title font-display text-base font-semibold text-base-content/90">{title}</h2>
-        {children}
-      </div>
+    <div className={`oc-card oc-card--bordered ${className}`}>
+      <h2 className="oc-card__title">{title}</h2>
+      {children}
     </div>
   );
 }
@@ -84,10 +89,10 @@ function HourStrip({ stats }: { stats: TimeAnalysis['hourlyStats'] }) {
         <div
           key={h.hour}
           title={`${h.hour}:00 · ${h.trades}笔 · 胜率${(h.winRate * 100).toFixed(0)}%`}
-          className="flex h-12 items-end justify-center rounded-sm bg-base-300/40"
+          className="flex h-12 items-end justify-center rounded-sm bg-[var(--surface-base-active)]"
         >
           <div
-            className={`w-full rounded-t-sm ${h.winRate >= 0.5 ? 'bg-success/70' : h.trades ? 'bg-error/60' : 'bg-transparent'}`}
+            className={`w-full rounded-t-sm ${h.winRate >= 0.5 ? 'bg-[var(--oc-profit)]/70' : h.trades ? 'bg-[var(--oc-loss)]/60' : 'bg-transparent'}`}
             style={{ height: `${Math.max(10, (h.trades / max) * 100)}%` }}
           />
         </div>
@@ -97,11 +102,16 @@ function HourStrip({ stats }: { stats: TimeAnalysis['hourlyStats'] }) {
 }
 
 export default function AnalysisPage() {
-  const { activeDatasetId, tradesRevision } = useDataset();
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const tab: TabId = isTabId(tabParam) ? tabParam : 'overview';
+  const setTab = (next: TabId) => setSearchParams({ tab: next }, { replace: true });
+
+  const { activeDatasetId, tradesRevision, loading: datasetsLoading } = useDataset();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('overview');
 
   useEffect(() => {
     if (activeDatasetId == null) return;
@@ -128,7 +138,7 @@ export default function AnalysisPage() {
     [trades],
   );
 
-  const pnlTone = core.totalPnl >= 0 ? 'text-success' : 'text-error';
+  const pnlTone = core.totalPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss';
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: '总览' },
     { id: 'behavior', label: '行为' },
@@ -136,32 +146,64 @@ export default function AnalysisPage() {
     { id: 'risk', label: '风险' },
   ];
 
+  usePageEnter(shellRef, undefined, [loading, error]);
+
+  if (datasetsLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <span className="oc-spinner oc-spinner--md" aria-label="加载中…" />
+      </div>
+    );
+  }
+
+  if (activeDatasetId == null) {
+    return <EmptyDataset title="导入数据后开始分析" />;
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <span className="loading loading-spinner loading-md text-[#D97757]" />
+        <span className="oc-spinner oc-spinner--md" />
       </div>
     );
   }
   if (error) {
-    return <div className="p-4 text-base text-error">{error}</div>;
+    return (
+      <div className="p-4 text-[14px] oc-text-loss" role="alert">
+        加载失败：{error}。请检查后端是否运行，或重新导入数据集。
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-4">
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto">
+    <div ref={shellRef} className="oc-page flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
+      <div className="oc-page__frame mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto p-4">
         <header>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">分析</h1>
-          <p className="mt-1 text-sm text-base-content/55">基于当前数据集的交割单统计</p>
+          <h1 className="text-[20px] font-medium tracking-tight text-wrap-balance">分析</h1>
+          <p className="mt-1 text-[13px] oc-text-faint">
+            {core.totalTrades} 笔样本 · 累计 {fmtMoney(core.totalPnl)} U
+          </p>
         </header>
 
-        <div role="tablist" className="tabs tabs-boxed w-full justify-start rounded-xl border border-white/[0.08] bg-base-300/25 p-1 sm:w-fit">
+        <AnalysisInsights
+          winRate={core.winRate}
+          profitFactor={core.profitFactor}
+          expectancy={core.expectancy}
+          maxDrawdown={core.maxDrawdown}
+          revengeTradeCount={behavior.revengeTradeCount}
+          tradesPerDay={core.tradesPerDay}
+        />
+
+        <div role="tablist" aria-label="分析维度" className="oc-tabs w-full sm:w-fit">
           {tabs.map((t) => (
             <button
               key={t.id}
+              id={`analysis-tab-${t.id}`}
               type="button"
               role="tab"
-              className={`tab flex-1 text-[0.9375rem] sm:flex-none ${tab === t.id ? 'tab-active' : ''}`}
+              aria-selected={tab === t.id}
+              aria-controls={`analysis-panel-${t.id}`}
+              className={`oc-tab flex-1 sm:flex-none${tab === t.id ? ' oc-tab--active' : ''}`}
               onClick={() => setTab(t.id)}
             >
               {t.label}
@@ -170,40 +212,40 @@ export default function AnalysisPage() {
         </div>
 
         {tab === 'overview' && (
-          <div className="flex flex-col gap-4">
-            <div className="stats stats-vertical w-full rounded-xl border border-white/[0.08] bg-base-200/80 shadow-none lg:stats-horizontal">
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">样本</div>
-                <div className="stat-value font-mono text-2xl">{core.totalTrades} 笔</div>
+          <div id="analysis-panel-overview" role="tabpanel" aria-labelledby="analysis-tab-overview" className="flex flex-col gap-4">
+            <div className="oc-stat-grid oc-stat-grid--auto">
+              <div className="oc-stat">
+                <div className="oc-stat__label">样本</div>
+                <div className="oc-stat__value">{core.totalTrades} 笔</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">累计盈亏</div>
-                <div className={`stat-value font-mono text-2xl ${pnlTone}`}>{fmt$(core.totalPnl)}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">累计盈亏</div>
+                <div className={`oc-stat__value ${pnlTone}`}>{fmtMoney(core.totalPnl)}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">胜率</div>
-                <div className="stat-value font-mono text-2xl">{fmtPct(core.winRate)}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">胜率</div>
+                <div className="oc-stat__value">{fmtPct(core.winRate)}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">盈亏比</div>
-                <div className="stat-value font-mono text-2xl">{core.payoff == null ? '—' : core.payoff.toFixed(2)}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">盈亏比</div>
+                <div className="oc-stat__value">{core.payoff == null ? '—' : core.payoff.toFixed(2)}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">期望值</div>
-                <div className="stat-value font-mono text-2xl">{fmt$(core.expectancy)}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">期望值</div>
+                <div className="oc-stat__value">{fmtMoney(core.expectancy)}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">最大回撤</div>
-                <div className="stat-value font-mono text-2xl text-error">{fmt$(core.maxDrawdown)}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">最大回撤</div>
+                <div className="oc-stat__value oc-text-loss">{fmtMoney(core.maxDrawdown)}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">利润因子</div>
-                <div className="stat-value font-mono text-2xl">{core.profitFactor?.toFixed(2) ?? '—'}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">利润因子</div>
+                <div className="oc-stat__value">{core.profitFactor?.toFixed(2) ?? '—'}</div>
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
             <Card title="概要">
-              <ul className="space-y-2 text-sm text-base-content/80">
+              <ul className="space-y-2 text-[13px] oc-text-muted">
                 <li className="flex justify-between gap-4">
                   <span>胜 / 负</span>
                   <span className="font-mono">
@@ -224,21 +266,21 @@ export default function AnalysisPage() {
             </Card>
             <Card title="极值交易">
               <div className="space-y-2">
-                <div className="flex justify-between rounded-lg bg-success/10 px-3 py-2.5 text-sm">
+                <div className="flex justify-between rounded-md oc-surface-success px-3 py-2.5 text-[13px]">
                   <span className="font-mono">{core.best?.symbol ?? '—'}</span>
-                  <span className="font-mono text-success">{fmt$(core.best?.profit)}</span>
+                  <span className="font-mono oc-text-profit">{fmtMoney(core.best?.profit)}</span>
                 </div>
-                <div className="flex justify-between rounded-lg bg-error/10 px-3 py-2.5 text-sm">
+                <div className="flex justify-between rounded-md oc-surface-error px-3 py-2.5 text-[13px]">
                   <span className="font-mono">{core.worst?.symbol ?? '—'}</span>
-                  <span className="font-mono text-error">{fmt$(core.worst?.profit)}</span>
+                  <span className="font-mono oc-text-loss">{fmtMoney(core.worst?.profit)}</span>
                 </div>
               </div>
             </Card>
             <Card title="交易对" className="lg:col-span-2">
-              <div className="overflow-x-auto">
-                <table className="table table-zebra table-sm">
+              <div className="oc-table-wrap">
+                <table className="oc-table">
                   <thead>
-                    <tr className="text-base-content/55">
+                    <tr>
                       <th>对</th>
                       <th className="text-right">笔数</th>
                       <th className="text-right">胜率</th>
@@ -250,11 +292,11 @@ export default function AnalysisPage() {
                       <tr key={s.symbol}>
                         <td className="font-mono">{s.symbol}</td>
                         <td className="text-right">{s.trades}</td>
-                        <td className={`text-right ${s.winRate >= 0.5 ? 'text-success' : 'text-error'}`}>
+                        <td className={`text-right ${s.winRate >= 0.5 ? 'oc-text-profit' : 'oc-text-loss'}`}>
                           {fmtPct(s.winRate)}
                         </td>
-                        <td className={`text-right font-mono ${s.totalPnl >= 0 ? 'text-success' : 'text-error'}`}>
-                          {fmt$(s.totalPnl)}
+                        <td className={`text-right font-mono ${s.totalPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}`}>
+                          {fmtMoney(s.totalPnl)}
                         </td>
                       </tr>
                     ))}
@@ -267,46 +309,46 @@ export default function AnalysisPage() {
         )}
 
         {tab === 'behavior' && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div id="analysis-panel-behavior" role="tabpanel" aria-labelledby="analysis-tab-behavior" className="grid gap-4 md:grid-cols-2">
             <Card title="交易频率">
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-base-content/55">日均笔数</span>
+                  <span className="oc-text-faint">日均笔数</span>
                   <span className="font-mono">{behavior.avgTradesPerDay.toFixed(1)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-base-content/55">单日最高</span>
+                  <span className="oc-text-faint">单日最高</span>
                   <span className="font-mono">{behavior.maxTradesInDay}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-base-content/55">快速再开仓</span>
+                  <span className="oc-text-faint">快速再开仓</span>
                   <span className="font-mono">{behavior.revengeTradeCount}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-base-content/55">高频交易日</span>
+                  <span className="oc-text-faint">高频交易日</span>
                   <span className="font-mono">{behavior.overtradingDays.length}</span>
                 </div>
               </div>
-              <p className="text-xs text-base-content/45">快速再开仓：上一笔亏损后 5 分钟内再次开仓。</p>
+              <p className="text-[12px] oc-text-faint">快速再开仓：上一笔亏损后 5 分钟内再次开仓。</p>
             </Card>
             <Card title="盈亏后下一笔">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                  <div className="text-xs text-base-content/55">上一笔盈利后</div>
-                  <div className="font-mono text-xl">{fmtPct(behavior.postWinStats.nextTradeWinRate)}</div>
-                  <div className="text-xs text-base-content/55">均盈亏 {fmt$(behavior.postWinStats.avgNextTradePnl)}</div>
+                <div className="rounded-md border border-[var(--border-weaker-base)] oc-surface-success p-3">
+                  <div className="text-[12px] oc-text-faint">上一笔盈利后</div>
+                  <div className="font-mono text-[20px]">{fmtPct(behavior.postWinStats.nextTradeWinRate)}</div>
+                  <div className="text-[12px] oc-text-faint">均盈亏 {fmtMoney(behavior.postWinStats.avgNextTradePnl)}</div>
                 </div>
-                <div className="rounded-lg border border-error/20 bg-error/5 p-3">
-                  <div className="text-xs text-base-content/55">上一笔亏损后</div>
-                  <div className="font-mono text-xl">{fmtPct(behavior.postLossStats.nextTradeWinRate)}</div>
-                  <div className="text-xs text-base-content/55">均盈亏 {fmt$(behavior.postLossStats.avgNextTradePnl)}</div>
+                <div className="rounded-md border border-[var(--border-weaker-base)] oc-surface-error p-3">
+                  <div className="text-[12px] oc-text-faint">上一笔亏损后</div>
+                  <div className="font-mono text-[20px]">{fmtPct(behavior.postLossStats.nextTradeWinRate)}</div>
+                  <div className="text-[12px] oc-text-faint">均盈亏 {fmtMoney(behavior.postLossStats.avgNextTradePnl)}</div>
                 </div>
               </div>
             </Card>
             <Card title="纪律评分">
               <div className="flex flex-wrap items-center gap-6">
                 <div className="font-mono text-5xl font-bold tabular-nums">{behavior.disciplineScore}</div>
-                <ul className="min-w-[12rem] flex-1 space-y-1 text-sm text-base-content/65">
+                <ul className="min-w-[12rem] flex-1 space-y-1 text-[13px] oc-text-muted">
                   <li className="flex justify-between">
                     <span>仓位一致性</span>
                     <span className="font-mono">{behavior.disciplineFactors.consistentSizing}</span>
@@ -329,12 +371,12 @@ export default function AnalysisPage() {
             <Card title="最近亏损">
               <ul className="max-h-52 space-y-1.5 overflow-y-auto text-sm">
                 {recentLosses.length === 0 ? (
-                  <li className="text-base-content/45">暂无</li>
+                  <li className="oc-text-faint">暂无</li>
                 ) : (
                   recentLosses.map((t) => (
-                    <li key={t.id} className="flex justify-between rounded-md bg-base-300/25 px-3 py-2">
+                    <li key={t.id} className="flex justify-between rounded-md bg-[var(--surface-base-active)] px-3 py-2">
                       <span className="font-mono">{t.symbol}</span>
-                      <span className="font-mono text-error">{fmt$(t.profit)}</span>
+                      <span className="font-mono oc-text-loss">{fmtMoney(t.profit)}</span>
                     </li>
                   ))
                 )}
@@ -344,40 +386,40 @@ export default function AnalysisPage() {
         )}
 
         {tab === 'time' && (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div id="analysis-panel-time" role="tabpanel" aria-labelledby="analysis-tab-time" className="grid gap-4 lg:grid-cols-2">
             <Card title="按小时" className="lg:col-span-2">
-              <p className="text-xs text-base-content/45 -mt-1">柱高 = 笔数，颜色 = 胜率</p>
+              <p className="-mt-1 text-[12px] oc-text-faint">柱高 = 笔数，颜色 = 胜率</p>
               <HourStrip stats={time.hourlyStats} />
-              <p className="text-sm text-base-content/55">
+              <p className="text-[13px] oc-text-muted">
                 最佳 {time.bestHour ?? '—'}:00 · 最差 {time.worstHour ?? '—'}:00
               </p>
             </Card>
             <Card title="持仓时长">
-              <div className="stats stats-vertical rounded-lg border border-white/[0.06] bg-base-300/20 shadow-none sm:stats-horizontal">
-                <div className="stat py-2">
-                  <div className="stat-title text-xs">&lt;30 分</div>
-                  <div className="stat-value font-mono text-lg">{fmtPct(time.holdingTimeStats.shortTermWinRate)}</div>
+              <div className="oc-stat-grid oc-stat-grid--cols-4">
+                <div className="oc-stat">
+                  <div className="oc-stat__label">&lt;30 分</div>
+                  <div className="oc-stat__value text-[18px]">{fmtPct(time.holdingTimeStats.shortTermWinRate)}</div>
                 </div>
-                <div className="stat py-2">
-                  <div className="stat-title text-xs">30 分~4 时</div>
-                  <div className="stat-value font-mono text-lg">{fmtPct(time.holdingTimeStats.mediumTermWinRate)}</div>
+                <div className="oc-stat">
+                  <div className="oc-stat__label">30 分~4 时</div>
+                  <div className="oc-stat__value text-[18px]">{fmtPct(time.holdingTimeStats.mediumTermWinRate)}</div>
                 </div>
-                <div className="stat py-2">
-                  <div className="stat-title text-xs">&gt;4 时</div>
-                  <div className="stat-value font-mono text-lg">{fmtPct(time.holdingTimeStats.longTermWinRate)}</div>
+                <div className="oc-stat">
+                  <div className="oc-stat__label">&gt;4 时</div>
+                  <div className="oc-stat__value text-[18px]">{fmtPct(time.holdingTimeStats.longTermWinRate)}</div>
                 </div>
               </div>
-              <p className="text-sm text-base-content/55">平均 {Math.round(time.holdingTimeStats.avgHoldingMinutes)} 分钟</p>
+              <p className="text-[13px] oc-text-muted">平均 {Math.round(time.holdingTimeStats.avgHoldingMinutes)} 分钟</p>
             </Card>
             <Card title="按星期">
-              <ul className="divide-y divide-white/[0.06]">
+              <ul className="divide-y divide-[var(--border-weaker-base)]">
                 {time.weekdayStats.map((w) => (
-                  <li key={w.day} className="flex items-center gap-3 py-2 text-sm first:pt-0 last:pb-0">
+                  <li key={w.day} className="flex items-center gap-3 py-2 text-[13px] first:pt-0 last:pb-0">
                     <span className="w-10 shrink-0">{w.dayName}</span>
-                    <span className={`min-w-0 flex-1 font-mono ${w.totalPnl >= 0 ? 'text-success' : 'text-error'}`}>
-                      {fmt$(w.totalPnl)}
+                    <span className={`min-w-0 flex-1 font-mono ${w.totalPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}`}>
+                      {fmtMoney(w.totalPnl)}
                     </span>
-                    <span className="shrink-0 text-base-content/45">{w.trades} 笔</span>
+                    <span className="shrink-0 oc-text-faint">{w.trades} 笔</span>
                   </li>
                 ))}
               </ul>
@@ -386,33 +428,33 @@ export default function AnalysisPage() {
         )}
 
         {tab === 'risk' && (
-          <div className="flex flex-col gap-4">
-            <div className="stats stats-vertical w-full rounded-xl border border-white/[0.08] bg-base-200/80 shadow-none sm:stats-horizontal">
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">最大连胜</div>
-                <div className="stat-value font-mono text-2xl">{risk.maxConsecutiveWins}</div>
+          <div id="analysis-panel-risk" role="tabpanel" aria-labelledby="analysis-tab-risk" className="flex flex-col gap-4">
+            <div className="oc-stat-grid oc-stat-grid--cols-4">
+              <div className="oc-stat">
+                <div className="oc-stat__label">最大连胜</div>
+                <div className="oc-stat__value">{risk.maxConsecutiveWins}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">最大连亏</div>
-                <div className="stat-value font-mono text-2xl text-error">{risk.maxConsecutiveLosses}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">最大连亏</div>
+                <div className="oc-stat__value oc-text-loss">{risk.maxConsecutiveLosses}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">夏普比率</div>
-                <div className="stat-value font-mono text-2xl">{risk.sharpeRatio?.toFixed(2) ?? '—'}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">夏普比率</div>
+                <div className="oc-stat__value">{risk.sharpeRatio?.toFixed(2) ?? '—'}</div>
               </div>
-              <div className="stat px-4 py-3">
-                <div className="stat-title text-xs">盈利/最大回撤</div>
-                <div className="stat-value font-mono text-2xl">{risk.profitToMaxDrawdown?.toFixed(2) ?? '—'}</div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">盈利/最大回撤</div>
+                <div className="oc-stat__value">{risk.profitToMaxDrawdown?.toFixed(2) ?? '—'}</div>
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Card title="盈亏分布">
-                <p className="font-mono text-lg">中位数 {fmt$(risk.pnlDistribution.median)}</p>
-                <p className="text-sm text-base-content/55">标准差 {fmt$(risk.pnlDistribution.stdDev)}</p>
+                <p className="font-mono text-lg">中位数 {fmtMoney(risk.pnlDistribution.median)}</p>
+                <p className="text-[13px] oc-text-muted">标准差 {fmtMoney(risk.pnlDistribution.stdDev)}</p>
               </Card>
               <Card title="当前连续">
                 {risk.currentStreak.type === 'none' ? (
-                  <span className="text-base-content/45">—</span>
+                  <span className="oc-text-faint">—</span>
                 ) : (
                   <p className="text-lg">
                     {risk.currentStreak.type === 'win' ? '连胜' : '连亏'}{' '}

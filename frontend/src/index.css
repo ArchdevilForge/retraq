@@ -1,96 +1,40 @@
 @import "tailwindcss";
-@plugin "daisyui" {
-  themes: retraq --default;
-}
+@import "./styles/opencode.css";
 
-/* Retraq — Anthropic-inspired tokens (see docs/DESIGN.md) */
+/* Tailwind bridge → OpenCode tokens */
 @theme {
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --color-base-100: #141413;
-  --color-base-200: #1f1e1d;
-  --color-base-300: #2a2928;
-  --color-base-content: #eceae6;
+  --color-base-100: #fdfcfc;
+  --color-base-200: #f1eeee;
+  --color-base-300: #e8e4e4;
+  --color-base-content: #201d1d;
 
-  --color-primary: #d97757;
-  --color-primary-content: #141413;
-  --color-secondary: #9a9690;
-  --color-accent: #d97757;
-  --color-neutral: #2a2928;
+  --color-primary: #201d1d;
+  --color-primary-content: #fdfcfc;
+  --color-secondary: #646262;
+  --color-accent: #007aff;
+  --color-neutral: #9a9898;
 
-  --color-success: #3d8a5a;
-  --color-warning: #c9a227;
-  --color-error: #c45c5c;
-  --color-info: #6b6862;
-
-  --color-surface: #1f1e1d;
-  --color-elevated: #2a2928;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-text-primary: #eceae6;
-  --color-text-muted: #9a9690;
-  --color-profit: #3d8a5a;
-  --color-loss: #c45c5c;
-  --color-brand: #d97757;
+  --color-success: #30d158;
+  --color-warning: #ff9f0a;
+  --color-error: #ff3b30;
+  --color-info: #007aff;
 }
 
 @layer base {
-  :root {
-    color-scheme: dark;
+  :root,
+  [data-theme="light"] {
+    color-scheme: light;
   }
 
-  [data-theme="dark"],
-  :root {
-    --b1: 20 4% 8%;
-    --b2: 30 3% 12%;
-    --b3: 30 3% 16%;
-    --bc: 40 10% 92%;
-    --p: 18 62% 59%;
-    --pc: 20 4% 8%;
-    --s: 30 5% 58%;
-    --sc: 20 4% 8%;
-    --a: 18 62% 59%;
-    --ac: 20 4% 8%;
-    --n: 30 3% 16%;
-    --nc: 40 10% 92%;
-    --su: 145 38% 39%;
-    --suc: 40 10% 92%;
-    --wa: 42 68% 47%;
-    --wac: 20 4% 8%;
-    --er: 0 48% 55%;
-    --erc: 40 10% 92%;
-    --in: 30 5% 42%;
-    --inc: 40 10% 92%;
-    --rounded-box: 0.75rem;
-    --rounded-btn: 0.5rem;
-    --rounded-badge: 9999px;
-    --animation-btn: 0.15s;
-    --animation-input: 0.15s;
-    --btn-focus-scale: 0.98;
-    --border-btn: 1px;
-    --tab-border: 1px;
-    --tab-radius: 0.5rem;
+  [data-theme="dark"] {
+    color-scheme: dark;
   }
 
   [data-theme="retraq"] {
-    color-scheme: dark;
-    --color-base-100: oklch(22% 0.01 80);
-    --color-base-200: oklch(26% 0.012 80);
-    --color-base-300: oklch(32% 0.014 80);
-    --color-base-content: oklch(93% 0.01 85);
-    --color-primary: oklch(68% 0.14 45);
-    --color-primary-content: oklch(22% 0.01 80);
-    --color-secondary: oklch(65% 0.02 80);
-    --color-secondary-content: oklch(22% 0.01 80);
-    --color-accent: oklch(68% 0.14 45);
-    --color-accent-content: oklch(22% 0.01 80);
-    --color-neutral: oklch(32% 0.014 80);
-    --color-neutral-content: oklch(93% 0.01 85);
-    --color-success: oklch(55% 0.1 155);
-    --color-warning: oklch(72% 0.12 85);
-    --color-error: oklch(58% 0.12 25);
-    --color-info: oklch(65% 0.02 80);
+    color-scheme: light;
   }
 
   button,
@@ -100,10 +44,11 @@
   select,
   summary {
     cursor: pointer;
+    touch-action: manipulation;
   }
 
   :focus-visible {
-    outline: 2px solid color-mix(in srgb, #d97757 55%, transparent);
+    outline: 2px solid color-mix(in srgb, #201d1d 35%, transparent);
     outline-offset: 2px;
   }
 }
@@ -116,31 +61,29 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #141413;
-  color: #eceae6;
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
-
-.font-display {
-  font-family: var(--font-display);
-}
-
-.font-mono,
-.tabular-nums {
-  font-family: var(--font-mono);
-  font-feature-settings: "tnum" 1;
 }
 
 * {
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(32, 29, 29, 0.18) transparent;
 }
+
 *::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(32, 29, 29, 0.18);
+  border-radius: 0;
+}
+
+[data-theme="dark"] * {
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -153,58 +96,21 @@ body,
   }
 }
 
-.app-shell {
-  background:
-    radial-gradient(ellipse 100% 60% at 50% -15%, rgba(217, 119, 87, 0.07), transparent 55%),
-    #141413;
-}
-
-.panel {
-  background: color-mix(in srgb, #1f1e1d 92%, transparent);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-}
-
-.panel-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.875rem 1.125rem;
-}
-
-.panel-body {
-  padding: 0.875rem 1.125rem;
-}
-
-.panel-card {
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #2a2928;
-  padding: 1.125rem 1.25rem;
-}
-
-.panel-card-title {
-  font-family: var(--font-display);
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #eceae6;
-  margin-bottom: 0.75rem;
-}
-
 .kpi-value {
-  font-family: var(--font-mono);
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--oc-font-mono);
+  font-size: var(--oc-text-20);
+  font-weight: var(--oc-weight-medium);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .kpi-label {
-  font-size: 0.875rem;
-  color: #9a9690;
+  font-size: var(--oc-text-13);
+  color: var(--text-weak);
 }
 
-.btn,
-.tab {
-  transition: color 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out,
-    opacity 0.15s ease-out;
+.font-mono,
+.tabular-nums {
+  font-family: var(--oc-font-mono);
+  font-feature-settings: "tnum" 1;
 }

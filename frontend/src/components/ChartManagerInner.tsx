@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState, memo } from 'react';
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
 import { Eraser, Maximize2, Minimize2, Minus, Ruler } from 'lucide-react';
 import {
@@ -8,12 +8,18 @@ import {
   syncOverlayCanvasSize,
   type RulerCorner,
 } from './chartRulerOverlay';
-import type { CandlestickData, HistogramData, LineData, SeriesMarker, Time } from 'lightweight-charts';
+import type { CandlestickData, LineData, SeriesMarker, Time } from 'lightweight-charts';
 import { useDataset } from '../context/DatasetContext';
-import { fetchKlines, fetchSymbolStats, fetchTradeFills } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import { fetchKlines, fetchSymbolStats, fetchTradeFills, TIMEFRAMES } from '../services/api';
 import type { Kline, Trade, TradeFill, Timeframe } from '../services/api';
+import {
+  applyCandleChartTheme,
+  klinesToVolume,
+  readChartTheme,
+  rulerStyleFromTheme,
+} from '../utils/chartTheme';
 
-const TIMEFRAMES: Timeframe[] = ['5m', '15m', '1h', '4h', '1d'];
 const TIMEFRAME_MS: Record<Timeframe, number> = {
   '5m': 5 * 60 * 1000,
   '15m': 15 * 60 * 1000,
@@ -27,6 +33,15 @@ const DEFAULT_COMPARE_SYMBOL = 'BTC-USDT';
 const TRADE_FETCH_BUFFER_BARS = 2026;
 const TRADE_VIEW_BUFFER_BARS = 200;
 const UTC8_OFFSET_SEC = 8 * 60 * 60;
+
+/** ponytail: coalesce ResizeObserver bursts during panel layout changes */
+function rafResizeObserver(onResize: () => void): ResizeObserver {
+  let raf = 0;
+  return new ResizeObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(onResize);
+  });
+}
 
 /** U 本位：名义价值 USDT = 价格 × 数量（张/币），不用裸币数量展示 */
 function formatUsdt(usdt: number): string {
@@ -70,6 +85,8 @@ interface Props {
 
 function ChartManager({ symbol, selectedTrade }: Props) {
   const { activeDatasetId } = useDataset();
+  const { theme } = useTheme();
+  const chartTheme = useMemo(() => readChartTheme(), [theme]);
   const [tradeFills, setTradeFills] = useState<TradeFill[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const compareContainerRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +118,8 @@ function ChartManager({ symbol, selectedTrade }: Props) {
 	const timeFillerSpecRef = useRef<{ start: Time; end: Time; step: number } | null>(null);
 	const mainCandlesByTimeRef = useRef<Map<Time, CandlestickData>>(new Map());
 	const compareCandlesByTimeRef = useRef<Map<Time, CandlestickData>>(new Map());
+	const mainKlinesRef = useRef<Kline[]>([]);
+	const compareKlinesRef = useRef<Kline[]>([]);
 	const mainHasDataRef = useRef(false);
 	const compareHasDataRef = useRef(false);
 	const pendingMainVisibleRangeRef = useRef<any | null>(null);
@@ -140,12 +159,13 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     if (!canvas || !container) return;
     syncOverlayCanvasSize(canvas, container);
     const stepSec = Math.floor(TIMEFRAME_MS[latestActiveTimeframeRef.current] / 1000);
+    const rulerStyle = rulerStyleFromTheme(readChartTheme());
     const pair = rulerResultRef.current;
     if (pair) {
       const a = remapRulerCorner(pair.a);
       const b = remapRulerCorner(pair.b);
       if (!a || !b) return;
-      drawRulerOnCanvas(canvas, a, b, measureRuler(a, b, stepSec));
+      drawRulerOnCanvas(canvas, a, b, measureRuler(a, b, stepSec), rulerStyle);
       return;
     }
     const start = rulerCornerRef.current;
@@ -153,7 +173,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     if (start && preview) {
       const a = remapRulerCorner(start) ?? start;
       const b = remapRulerCorner(preview) ?? preview;
-      drawRulerOnCanvas(canvas, a, b, measureRuler(a, b, stepSec));
+      drawRulerOnCanvas(canvas, a, b, measureRuler(a, b, stepSec), rulerStyle);
       return;
     }
     clearRulerCanvas(canvas);
@@ -204,7 +224,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       if (drawMode === 'hline') {
         const line = series.createPriceLine({
           price,
-          color: '#9A9690',
+          color: readChartTheme().hline,
           lineWidth: 3,
           lineStyle: 0,
           axisLabelVisible: true,
@@ -269,7 +289,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
+    const ro = rafResizeObserver(() => {
       if (rulerResultRef.current || rulerCornerRef.current) paintRulerOverlay();
     });
     ro.observe(el);
@@ -427,8 +447,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       return null;
     };
 
-    const buyColor = '#3D8A5A';
-    const sellColor = '#C45C5C';
+    const { up: buyColor, down: sellColor } = readChartTheme();
     const isLong = trade.direction === 'long';
     const entryIsBuy = isLong;
     const entryColor = entryIsBuy ? buyColor : sellColor;
@@ -570,10 +589,13 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     try {
       seriesRef.current.setData([]);
       volumeSeriesRef.current.setData([]);
+      mainKlinesRef.current = [];
       mainCandlesByTimeRef.current = new Map();
       mainHasDataRef.current = false;
       const klines: Kline[] = await fetchKlines(sym, tf, range ? { start: range.start, end: range.end } : undefined);
       if (requestId !== latestMainRequestIdRef.current) return;
+      mainKlinesRef.current = klines;
+      const themeNow = readChartTheme();
 	      const data: CandlestickData[] = klines.map(k => ({
 	        time: k.time as Time,
 	        open: k.open,
@@ -581,11 +603,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
 	        low: k.low,
 	        close: k.close,
 	      }));
-	      const volume: HistogramData[] = klines.map(k => ({
-	        time: k.time as Time,
-	        value: k.volume,
-	        color: k.close >= k.open ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)',
-	      }));
+	      const volume = klinesToVolume(klines, themeNow);
 	      seriesRef.current.setData(data);
 	      volumeSeriesRef.current.setData(volume);
 	      mainCandlesByTimeRef.current = new Map(data.map((candle) => [candle.time, candle]));
@@ -618,6 +636,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       if (requestId !== latestMainRequestIdRef.current) return;
       seriesRef.current.setData([]);
       volumeSeriesRef.current.setData([]);
+      mainKlinesRef.current = [];
       mainCandlesByTimeRef.current = new Map();
       mainHasDataRef.current = false;
       setMainHasData(false);
@@ -639,10 +658,13 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     try {
       compareSeriesRef.current.setData([]);
       compareVolumeSeriesRef.current.setData([]);
+      compareKlinesRef.current = [];
       compareCandlesByTimeRef.current = new Map();
       compareHasDataRef.current = false;
       const klines: Kline[] = await fetchKlines(sym, tf, range ? { start: range.start, end: range.end } : undefined);
       if (requestId !== latestCompareRequestIdRef.current) return;
+      compareKlinesRef.current = klines;
+      const themeNow = readChartTheme();
 	      const data: CandlestickData[] = klines.map(k => ({
 	        time: k.time as Time,
 	        open: k.open,
@@ -650,11 +672,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
 	        low: k.low,
 	        close: k.close,
 	      }));
-	      const volume: HistogramData[] = klines.map(k => ({
-	        time: k.time as Time,
-	        value: k.volume,
-	        color: k.close >= k.open ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)',
-	      }));
+	      const volume = klinesToVolume(klines, themeNow);
 	      compareSeriesRef.current.setData(data);
 	      compareVolumeSeriesRef.current.setData(volume);
 	      compareCandlesByTimeRef.current = new Map(data.map((candle) => [candle.time, candle]));
@@ -686,6 +704,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       if (requestId !== latestCompareRequestIdRef.current) return;
       compareSeriesRef.current.setData([]);
       compareVolumeSeriesRef.current.setData([]);
+      compareKlinesRef.current = [];
       compareCandlesByTimeRef.current = new Map();
       compareHasDataRef.current = false;
       setCompareHasData(false);
@@ -833,16 +852,17 @@ function ChartManager({ symbol, selectedTrade }: Props) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const initialTheme = readChartTheme();
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
       layout: { 
         background: { color: 'transparent' }, 
-        textColor: '#d1d4dc' 
+        textColor: initialTheme.text,
       },
       grid: { 
-        vertLines: { color: 'rgba(255, 255, 255, 0.1)' }, 
-        horzLines: { color: 'rgba(255, 255, 255, 0.1)' } 
+        vertLines: { color: initialTheme.gridLine }, 
+        horzLines: { color: initialTheme.gridLine },
       },
       crosshair: { mode: 0 },
       timeScale: { timeVisible: true, secondsVisible: false },
@@ -851,13 +871,13 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     chartRef.current = chart;
 
 	    const series = chart.addSeries(CandlestickSeries, {
-	      upColor: '#3D8A5A',
-	      downColor: '#C45C5C',
+	      upColor: initialTheme.up,
+	      downColor: initialTheme.down,
 	      borderVisible: false,
 	      lastValueVisible: false,
 	      priceLineVisible: false,
-	      wickUpColor: '#3D8A5A',
-	      wickDownColor: '#C45C5C',
+	      wickUpColor: initialTheme.up,
+	      wickDownColor: initialTheme.down,
     });
     seriesRef.current = series;
     chart.priceScale('right').applyOptions({
@@ -902,7 +922,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       if (containerRef.current.clientWidth === 0 || containerRef.current.clientHeight === 0) return;
       chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
     };
-    const observer = new ResizeObserver(() => resizeMain());
+    const observer = rafResizeObserver(resizeMain);
     observer.observe(containerRef.current);
     requestAnimationFrame(resizeMain);
 
@@ -912,6 +932,23 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       chart.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (chartRef.current && seriesRef.current) {
+      applyCandleChartTheme(chartRef.current, seriesRef.current, chartTheme);
+    }
+    if (compareChartRef.current && compareSeriesRef.current) {
+      applyCandleChartTheme(compareChartRef.current, compareSeriesRef.current, chartTheme);
+    }
+    if (mainKlinesRef.current.length > 0 && volumeSeriesRef.current) {
+      volumeSeriesRef.current.setData(klinesToVolume(mainKlinesRef.current, chartTheme));
+    }
+    if (compareKlinesRef.current.length > 0 && compareVolumeSeriesRef.current) {
+      compareVolumeSeriesRef.current.setData(klinesToVolume(compareKlinesRef.current, chartTheme));
+    }
+    applyTradeMarkers();
+    paintRulerOverlay();
+  }, [chartTheme, applyTradeMarkers, paintRulerOverlay]);
 
   useEffect(() => {
     compareEnabledRef.current = compareEnabled;
@@ -929,16 +966,17 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     if (!compareEnabled || !compareContainerRef.current) return;
     if (compareChartRef.current) return;
 
+    const initialTheme = readChartTheme();
     const chart = createChart(compareContainerRef.current, {
       width: compareContainerRef.current.clientWidth,
       height: compareContainerRef.current.clientHeight,
       layout: {
         background: { color: 'transparent' },
-        textColor: '#d1d4dc',
+        textColor: initialTheme.text,
       },
       grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.1)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.1)' },
+        vertLines: { color: initialTheme.gridLine },
+        horzLines: { color: initialTheme.gridLine },
       },
       crosshair: { mode: 0 },
       timeScale: { timeVisible: true, secondsVisible: false },
@@ -949,13 +987,13 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     compareChartRef.current = chart;
 
 	    const series = chart.addSeries(CandlestickSeries, {
-	      upColor: '#3D8A5A',
-	      downColor: '#C45C5C',
+	      upColor: initialTheme.up,
+	      downColor: initialTheme.down,
 	      borderVisible: false,
 	      lastValueVisible: false,
 	      priceLineVisible: false,
-	      wickUpColor: '#3D8A5A',
-	      wickDownColor: '#C45C5C',
+	      wickUpColor: initialTheme.up,
+	      wickDownColor: initialTheme.down,
 	    });
     compareSeriesRef.current = series;
     chart.priceScale('right').applyOptions({
@@ -1066,7 +1104,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
         height: compareContainerRef.current.clientHeight,
       });
     };
-    const observer = new ResizeObserver(() => resizeCompare());
+    const observer = rafResizeObserver(resizeCompare);
     observer.observe(compareContainerRef.current);
     requestAnimationFrame(resizeCompare);
 
@@ -1163,33 +1201,34 @@ function ChartManager({ symbol, selectedTrade }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div ref={chartsPaneRef} className="relative flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-base-100/30 ring-1 ring-white/[0.06]">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2.5">
+        <div className="oc-chart-shell">
+          <div className="oc-chart-toolbar">
             <div className="flex min-w-0 items-center gap-2">
-              <div className="text-sm text-base-content/75">
+              <div className="min-w-0">
                 主图: <span className="font-mono">{selectedTrade?.symbol || symbol}</span>
-                {mainKlineLoading && <span className="loading loading-spinner loading-xs ml-2" />}
+                {mainKlineLoading && <span className="oc-spinner ml-2 align-middle" />}
                 {mainKlineError && !mainHasData && (
-                  <span className="ml-2 text-xs text-error truncate max-w-[240px]">{mainKlineError}</span>
+                  <span className="ml-2 max-w-[240px] truncate text-[12px] oc-text-loss">{mainKlineError}</span>
                 )}
                 {selectedTrade && mainHasData && tradeFills.length > 0 && (
-                  <span className="ml-2 text-xs text-base-content/50">成交 {tradeFills.length} 笔 → K 线标注</span>
+                  <span className="ml-2 text-[12px] oc-text-faint">成交 {tradeFills.length} 笔 → K 线标注</span>
                 )}
                 {selectedTrade && mainHasData && tradeFills.length === 0 && (
-                  <span className="ml-2 text-xs text-warning">无成交明细，仅均价线；请用交易历史模板重新导入</span>
+                  <span className="ml-2 text-[12px] oc-text-brand">无成交明细，仅均价线；请用交易历史模板重新导入</span>
                 )}
                 {drawMode === 'hline' ? (
-                  <span className="ml-2 text-xs text-[#D97757]">点击主图放置水平线</span>
+                  <span className="ml-2 text-[12px] oc-text-accent">点击主图放置水平线</span>
                 ) : null}
                 {drawMode === 'ruler' ? (
-                  <span className="ml-2 text-xs text-[#D97757]">{rulerHint || '点击第一点'}</span>
+                  <span className="ml-2 text-[12px] oc-text-accent">{rulerHint || '点击第一点'}</span>
                 ) : null}
               </div>
-              <div className="tabs tabs-boxed tabs-sm p-0.5">
+              <div className="oc-tabs oc-tabs--compact shrink-0">
                 {TIMEFRAMES.map((tf) => (
                   <button
                     key={tf}
-                    className={`tab tab-sm ${activeTimeframe === tf ? 'tab-active' : ''}`}
+                    type="button"
+                    className={`oc-tab${activeTimeframe === tf ? ' oc-tab--active' : ''}`}
                     onClick={() => setActiveTimeframe(tf)}
                   >
                     {tf}
@@ -1198,10 +1237,10 @@ function ChartManager({ symbol, selectedTrade }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                className={`btn btn-sm btn-square ${drawMode === 'ruler' ? 'bg-[#D97757] text-[#141413] border-0 hover:bg-[#D97757]/90' : 'btn-ghost border border-white/[0.08]'}`}
+                className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'ruler' ? ' oc-btn--ghost-selected' : ''}`}
                 title="尺子：主图点两下测价差与时间"
                 onClick={() => {
                   if (drawMode === 'ruler') {
@@ -1217,7 +1256,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
               </button>
               <button
                 type="button"
-                className={`btn btn-sm btn-square ${drawMode === 'hline' ? 'bg-[#D97757] text-[#141413] border-0 hover:bg-[#D97757]/90' : 'btn-ghost border border-white/[0.08]'}`}
+                className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'hline' ? ' oc-btn--ghost-selected' : ''}`}
                 title="水平线：点击主图放置（线宽 3px）"
                 onClick={() => {
                   rulerCornerRef.current = null;
@@ -1228,7 +1267,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-square btn-ghost border border-white/[0.08]"
+                className="oc-icon-btn oc-icon-btn--sm"
                 title="清除手动画线"
                 onClick={clearUserDrawnLines}
               >
@@ -1236,15 +1275,15 @@ function ChartManager({ symbol, selectedTrade }: Props) {
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${isFullscreen ? 'bg-[#D97757] text-[#141413] border-0 hover:bg-[#D97757]/90' : 'btn-ghost border border-white/[0.08]'}`}
+                className={`oc-btn oc-btn--sm oc-btn--secondary${isFullscreen ? ' oc-btn--ghost-selected' : ''}`}
                 onClick={toggleFullscreen}
                 title={isFullscreen ? '退出全屏' : '全屏查看'}
               >
-                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${compareEnabled ? 'bg-[#D97757] text-[#141413] border-0 hover:bg-[#D97757]/90' : 'btn-ghost border border-white/[0.08]'}`}
+                className={`oc-btn oc-btn--sm oc-btn--secondary${compareEnabled ? ' oc-btn--ghost-selected' : ''}`}
                 onClick={() => setCompareEnabled((v) => !v)}
               >
                 {compareEnabled ? '隐藏对比' : '多交易对对比'}
@@ -1265,21 +1304,26 @@ function ChartManager({ symbol, selectedTrade }: Props) {
         </div>
 
         {compareEnabled && (
-          <div className="bg-base-100 border border-base-300 rounded-box flex flex-col flex-1 min-h-0">
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-base-300">
-              <div className="flex items-center gap-3 min-w-0">
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => compareModalRef.current?.showModal()}>
+          <div className="oc-chart-shell flex-1 min-h-0">
+            <div className="oc-chart-toolbar">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  className="oc-btn oc-btn--sm oc-btn--ghost"
+                  onClick={() => compareModalRef.current?.showModal()}
+                >
                   对比: <span className="font-mono">{compareSymbol}</span>
-                  {compareKlineLoading && <span className="loading loading-spinner loading-xs ml-2" />}
+                  {compareKlineLoading && <span className="oc-spinner ml-2 align-middle" />}
                   {compareKlineError && !compareHasData && (
-                    <span className="ml-2 text-xs text-error truncate max-w-[240px]">{compareKlineError}</span>
+                    <span className="ml-2 max-w-[240px] truncate text-[12px] oc-text-loss">{compareKlineError}</span>
                   )}
                 </button>
-                <div className="tabs tabs-bordered">
+                <div className="oc-tabs oc-tabs--compact">
                   {TIMEFRAMES.map((tf) => (
                     <button
                       key={tf}
-                      className={`tab tab-sm tab-bordered ${activeTimeframe === tf ? 'tab-active' : ''}`}
+                      type="button"
+                      className={`oc-tab${activeTimeframe === tf ? ' oc-tab--active' : ''}`}
                       onClick={() => setActiveTimeframe(tf)}
                     >
                       {tf}
@@ -1287,12 +1331,9 @@ function ChartManager({ symbol, selectedTrade }: Props) {
                   ))}
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button type="button" className="btn btn-sm" onClick={() => setCompareEnabled(false)}>
-                  隐藏对比
-                </button>
-              </div>
+              <button type="button" className="oc-btn oc-btn--sm oc-btn--secondary" onClick={() => setCompareEnabled(false)}>
+                隐藏对比
+              </button>
             </div>
             <div ref={compareContainerRef} className="flex-1 min-h-0" />
           </div>
@@ -1300,98 +1341,92 @@ function ChartManager({ symbol, selectedTrade }: Props) {
 
         <div
           ref={sharedTimelineRef}
-          className="pointer-events-none absolute w-px bg-base-content/40 opacity-0"
-          style={{ left: 0, top: 0, bottom: 0, zIndex: 10 }}
+          className="pointer-events-none absolute w-px opacity-0"
+          style={{ left: 0, top: 0, bottom: 0, zIndex: 10, background: 'var(--text-weaker)' }}
         />
       </div>
 
-      <dialog ref={compareModalRef} className="modal modal-bottom sm:modal-middle">
-        <div className="modal-box w-11/12 max-w-xl p-0 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl">
-          <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-base-300 bg-base-200/40">
-            <div className="min-w-0">
-              <h3 className="font-bold text-lg leading-none">选择对比交易对</h3>
-              <div className="text-xs text-base-content/60 mt-1 truncate">对比图将与主图同步时间范围</div>
-            </div>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => compareModalRef.current?.close()}>
-              关闭
-            </button>
+      <dialog ref={compareModalRef} className="oc-modal w-[min(36rem,92vw)]">
+        <div className="oc-modal__header">
+          <div className="min-w-0">
+            <h3 className="text-[16px] font-medium leading-none">选择对比交易对</h3>
+            <div className="mt-1 truncate text-[12px] oc-text-faint">对比图将与主图同步时间范围</div>
           </div>
+          <button type="button" className="oc-btn oc-btn--sm oc-btn--ghost" onClick={() => compareModalRef.current?.close()}>
+            关闭
+          </button>
+        </div>
 
-          <div className="px-5 pt-4 pb-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => {
-                const base = selectedTrade?.symbol || symbol || DEFAULT_COMPARE_SYMBOL;
-                setCompareSymbol(base);
-                compareModalRef.current?.close();
-              }}
-            >
-              使用当前仓位交易对
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              onClick={() => {
-                setCompareSymbol(DEFAULT_COMPARE_SYMBOL);
-                compareModalRef.current?.close();
-              }}
-            >
-              默认 {DEFAULT_COMPARE_SYMBOL}
-            </button>
-          </div>
+        <div className="oc-modal__body flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="oc-btn oc-btn--sm oc-btn--primary"
+            onClick={() => {
+              const base = selectedTrade?.symbol || symbol || DEFAULT_COMPARE_SYMBOL;
+              setCompareSymbol(base);
+              compareModalRef.current?.close();
+            }}
+          >
+            使用当前仓位交易对
+          </button>
+          <button
+            type="button"
+            className="oc-btn oc-btn--sm oc-btn--secondary"
+            onClick={() => {
+              setCompareSymbol(DEFAULT_COMPARE_SYMBOL);
+              compareModalRef.current?.close();
+            }}
+          >
+            默认 {DEFAULT_COMPARE_SYMBOL}
+          </button>
+        </div>
 
-          <div className="px-5 pb-3">
-            <label className="input input-bordered flex items-center gap-2 bg-base-200/40 focus-within:outline-none focus-within:ring-2 focus-within:ring-primary/30">
-              <input
-                className="grow"
-                type="search"
-                placeholder="搜索交易对..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-            </label>
-          </div>
-
-          <div className="px-2 pb-4 max-h-[60vh] overflow-y-auto">
-            <div className="space-y-1">
-              {(symbolOptions.length ? symbolOptions : [{ value: DEFAULT_COMPARE_SYMBOL, label: DEFAULT_COMPARE_SYMBOL }])
-                .filter((opt) => {
-                  const q = searchQuery.trim().toLowerCase();
-                  if (!q) return true;
-                  return opt.label.toLowerCase().includes(q);
-                })
-                .map((opt) => {
-                  const isSelected = opt.value === compareSymbol;
-
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-base-200/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                        isSelected ? 'bg-primary/10 text-primary' : ''
-                      }`}
-                      onClick={() => {
-                        setCompareSymbol(opt.value);
-                        compareModalRef.current?.close();
-                      }}
-                    >
-                      <span className="font-mono truncate">{opt.label}</span>
-                    </button>
-                  );
-                })}
-            </div>
+        <div className="px-3.5 pb-3">
+          <div className="oc-input-wrap">
+            <input
+              className="oc-input"
+              type="search"
+              placeholder="搜索交易对..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
           </div>
         </div>
-        <form method="dialog" className="modal-backdrop">
-          <button type="submit" className="sr-only" aria-label="close">
-            close
-          </button>
-        </form>
+
+        <div className="max-h-[60vh] overflow-y-auto px-2 pb-3">
+          <div className="space-y-0.5">
+            {(symbolOptions.length ? symbolOptions : [{ value: DEFAULT_COMPARE_SYMBOL, label: DEFAULT_COMPARE_SYMBOL }])
+              .filter((opt) => {
+                const q = searchQuery.trim().toLowerCase();
+                if (!q) return true;
+                return opt.label.toLowerCase().includes(q);
+              })
+              .map((opt) => {
+                const isSelected = opt.value === compareSymbol;
+
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`oc-list-item${isSelected ? ' oc-list-item--active' : ''}`}
+                    onClick={() => {
+                      setCompareSymbol(opt.value);
+                      compareModalRef.current?.close();
+                    }}
+                  >
+                    <span className="font-mono truncate">{opt.label}</span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
       </dialog>
     </div>
   );
 }
 
-export default ChartManager;
+export default memo(
+  ChartManager,
+  (prev, next) => prev.symbol === next.symbol && prev.selectedTrade?.id === next.selectedTrade?.id,
+);
