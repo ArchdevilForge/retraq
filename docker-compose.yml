@@ -1,7 +1,6 @@
 services:
   retraq:
-    build: .
-    image: retraq:local
+    image: ghcr.io/xeron2000/retraq:latest
     ports:
       - "8080:8080"
     volumes:
