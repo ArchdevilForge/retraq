@@ -200,6 +200,10 @@ def _trade_query(db: Session, dataset_id: int, symbol: Optional[str], start_date
     return q
 
 
+def _filter_valid_trades(trades: list[Trade]) -> list[Trade]:
+    return [t for t in trades if is_valid_symbol(str(t.symbol))]
+
+
 def _trade_to_dict(t: Trade) -> dict:
     return {
         "id": t.id,
@@ -231,19 +235,18 @@ def get_trades(
     if query is None:
         return {"total": 0, "page": page, "limit": limit, "data": []}
 
-    total = query.count()
-    trades = (
-        query.order_by(Trade.entry_time.desc())
-        .offset((page - 1) * limit)
-        .limit(limit)
-        .all()
-    )
+    # Filter invalid symbols in Python so total matches data (blocklist is tiny).
+    # ponytail: full scan per page request; index/SQL filter if datasets get huge
+    ordered = query.order_by(Trade.entry_time.desc()).all()
+    valid = _filter_valid_trades(ordered)
+    total = len(valid)
+    page_rows = valid[(page - 1) * limit : page * limit]
 
     return {
         "total": total,
         "page": page,
         "limit": limit,
-        "data": [_trade_to_dict(t) for t in trades if is_valid_symbol(t.symbol)],
+        "data": [_trade_to_dict(t) for t in page_rows],
     }
 
 

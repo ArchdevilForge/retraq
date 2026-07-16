@@ -86,22 +86,6 @@ export async function fetchDatasets(): Promise<{ data: Dataset[] }> {
   return data;
 }
 
-export async function updateDataset(id: number, name: string): Promise<Dataset> {
-  const { data } = await axios.patch<Dataset>(`/api/datasets/${id}`, { name });
-  return data;
-}
-
-export async function deleteDataset(id: number): Promise<void> {
-  await axios.delete(`/api/datasets/${id}`);
-}
-
-export async function fetchImportTemplates(): Promise<{ id: string; label: string }[]> {
-  const { data } = await axios.get<{ templates: { id: string; label: string }[] }>(
-    '/api/import/templates',
-  );
-  return data.templates;
-}
-
 export async function fetchKlines(
   symbol: string,
   timeframe: Timeframe,
@@ -173,14 +157,16 @@ function importErrorMessage(err: unknown): string {
   return '导入失败，请检查文件与模板';
 }
 
+/** Matches backend /api/trades/import (main always sets template/dataset/replaced). */
 export type ImportResult = {
   total: number;
   success: number;
   failed: number;
-  template?: string;
-  dataset_id?: number;
-  dataset_name?: string;
-  replaced?: boolean;
+  template: string;
+  dataset_id: number;
+  dataset_name: string;
+  replaced: boolean;
+  /** binance_futures_trades only */
   fills?: number;
   closed_positions?: number;
 };
@@ -206,19 +192,4 @@ export async function importTrades(
   } catch (err) {
     throw new Error(importErrorMessage(err));
   }
-}
-
-export interface StatsOverview {
-  total_pnl: number;
-  win_rate: number;
-  profit_factor: number;
-  max_drawdown: number;
-  avg_holding_time: number;
-  symbol_distribution: Record<string, number>;
-  trade_count: number;
-}
-
-export async function fetchStats(): Promise<StatsOverview> {
-  const { data } = await axios.get('/api/stats/overview');
-  return data;
 }

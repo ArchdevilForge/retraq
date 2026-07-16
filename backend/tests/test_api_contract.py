@@ -1,8 +1,11 @@
 """API contract: response shapes align with frontend/src/services/api.ts."""
 from fastapi.testclient import TestClient
 
+import os
+
 from api_contract import (
     DATASET_FIELDS,
+    IMPORT_RESULT_FIELDS,
     KLINE_FIELDS,
     STATS_OVERVIEW_FIELDS,
     SYMBOL_STATS_FIELDS,
@@ -11,6 +14,10 @@ from api_contract import (
 )
 from models import Dataset, Kline, Trade, TradeFill
 from services.trade_importer import TEMPLATES
+
+SAMPLE_LANGGE = os.path.join(
+    os.path.dirname(__file__), "..", "..", "samples", "bit-langge-delivery-example.xlsx"
+)
 
 
 def test_trades_requires_dataset_header(client: TestClient):
@@ -87,7 +94,8 @@ def test_invalid_symbol_filtered_from_trades(client: TestClient, db_session, dat
     r = client.get("/api/trades", headers=dataset_headers, params={"limit": 10})
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] == 2
+    # total must match filtered data (not raw DB count)
+    assert body["total"] == 1
     assert len(body["data"]) == 1
     assert body["data"][0]["symbol"] == "BTC-USDT"
 
@@ -260,3 +268,37 @@ def test_klines_cached_shape(client: TestClient, db_session):
     assert len(body["data"]) == 2
     assert set(body["data"][0].keys()) == KLINE_FIELDS
     assert body["data"][0]["timestamp"] == 0
+
+
+def test_import_langge_result_fields(client: TestClient):
+    if not os.path.isfile(SAMPLE_LANGGE):
+        return
+    with open(SAMPLE_LANGGE, "rb") as f:
+        r = client.post(
+            "/api/trades/import",
+            params={"template": "auto", "replace": True, "label": "contract-sample"},
+            files={
+                "file": (
+                    "bit-langge-delivery-example.xlsx",
+                    f,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert IMPORT_RESULT_FIELDS.issubset(body.keys())
+    assert body["template"] == "langge"
+    assert body["dataset_name"] == "contract-sample"
+    assert body["replaced"] is True
+    assert body["success"] >= 1
+
+    headers = {"X-Dataset-Id": str(body["dataset_id"])}
+    trades = client.get("/api/trades", headers=headers, params={"limit": 50})
+    assert trades.status_code == 200
+    assert trades.json()["total"] == body["success"]
+    row = trades.json()["data"][0]
+    assert set(row.keys()) == TRADE_FIELDS
+    if row["profit_rate"] is not None:
+        # API stores decimal ratio for Intl percent formatting
+        assert abs(row["profit_rate"]) <= 10

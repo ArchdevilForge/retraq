@@ -45,8 +45,9 @@ SYMBOL_STATS_FIELDS = frozenset({"trade_count", "symbol_distribution"})
 
 KLINE_FIELDS = frozenset({"timestamp", "open", "high", "low", "close", "volume"})
 
+# Always present after /api/trades/import (main.py enriches template/dataset/replaced).
 IMPORT_RESULT_FIELDS = frozenset(
     {"total", "success", "failed", "template", "dataset_id", "dataset_name", "replaced"}
 )
-
-TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
+# binance_futures_trades aggregate path only
+IMPORT_RESULT_OPTIONAL_FIELDS = frozenset({"fills", "closed_positions"})

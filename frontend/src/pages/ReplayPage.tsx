@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import ChartManager from '../components/ChartManager';
+import ChartManager from '../components/ChartManagerInner';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
 import TradeList from '../components/TradeList';
