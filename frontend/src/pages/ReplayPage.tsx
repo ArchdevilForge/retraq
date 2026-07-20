@@ -69,7 +69,7 @@ export default function ReplayPage() {
             <button
               type="button"
               className="oc-panel-rail oc-panel-rail--right"
-              aria-label="显示仓位详情"
+              aria-label="显示持仓详情"
               onClick={() => setDetailOpen(true)}
             >
               详情

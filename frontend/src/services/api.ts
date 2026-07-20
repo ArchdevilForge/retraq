@@ -163,7 +163,6 @@ export async function fetchKlines(
       const status = (err as { status?: number })?.status;
       const shouldRetry = status == null || status === 502 || status === 503 || status === 504;
       if (!shouldRetry || attempt === maxAttempts) break;
-      // next attempt forces refresh in case stale edge cache
       params.nocache = 1;
       await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
@@ -205,14 +204,16 @@ function importErrorMessage(err: unknown): string {
   return '导入失败，请检查文件与模板';
 }
 
+/** Matches backend /api/trades/import (main always sets template/dataset/replaced). */
 export type ImportResult = {
   total: number;
   success: number;
   failed: number;
-  template?: string;
-  dataset_id?: number;
-  dataset_name?: string;
-  replaced?: boolean;
+  template: string;
+  dataset_id: number;
+  dataset_name: string;
+  replaced: boolean;
+  /** binance_futures_trades only */
   fills?: number;
   closed_positions?: number;
 };

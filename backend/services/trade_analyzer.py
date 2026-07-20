@@ -77,12 +77,6 @@ class TradeAnalyzer:
         avg_holding_hours = avg_holding_ms / (1000 * 60 * 60)
 
         symbol_dist = self.symbol_distribution(db, dataset_id)
-        trade_count_row = (
-            db.query(func.count(Trade.id))
-            .filter(Trade.dataset_id == dataset_id)
-            .scalar()
-        )
-        trade_count = int(trade_count_row or 0)
 
         return {
             "total_pnl": round(total_pnl, 2),
@@ -91,7 +85,8 @@ class TradeAnalyzer:
             "max_drawdown": round(max_drawdown, 2),
             "avg_holding_time": round(avg_holding_hours, 2),
             "symbol_distribution": symbol_dist,
-            "trade_count": trade_count,
+            # same basis as empty path / symbol chips: valid symbols only
+            "trade_count": sum(symbol_dist.values()),
         }
 
 
