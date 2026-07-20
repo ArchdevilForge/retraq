@@ -260,3 +260,11 @@ def test_klines_cached_shape(client: TestClient, db_session):
     assert len(body["data"]) == 2
     assert set(body["data"][0].keys()) == KLINE_FIELDS
     assert body["data"][0]["timestamp"] == 0
+
+
+def test_import_result_optional_fields_disjoint():
+    from tests.api_contract import IMPORT_RESULT_FIELDS, IMPORT_RESULT_OPTIONAL_FIELDS
+
+    assert IMPORT_RESULT_FIELDS.isdisjoint(IMPORT_RESULT_OPTIONAL_FIELDS)
+    assert "fills" in IMPORT_RESULT_OPTIONAL_FIELDS
+    assert "closed_positions" in IMPORT_RESULT_OPTIONAL_FIELDS

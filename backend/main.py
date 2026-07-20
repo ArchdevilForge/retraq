@@ -243,6 +243,7 @@ def get_trades(
         "total": total,
         "page": page,
         "limit": limit,
+        # ponytail: page filter only; total may include rare INVALID_SYMBOLS rows
         "data": [_trade_to_dict(t) for t in trades if is_valid_symbol(t.symbol)],
     }
 

@@ -304,19 +304,20 @@ export function useTrainingRun() {
     return message;
   }, []);
 
+  /** usdtNotional: quote size (USDT), converted to base qty inside sim. */
   const open = useCallback(
-    (direction: Direction, qty: number, leverage: number, sl?: number | null, tp?: number | null) =>
-      applyOrder((_r, bar, ledger) => marketOpen(ledger, bar, direction, qty, leverage, sl, tp)),
+    (direction: Direction, usdtNotional: number, leverage: number, sl?: number | null, tp?: number | null) =>
+      applyOrder((_r, bar, ledger) => marketOpen(ledger, bar, direction, usdtNotional, leverage, sl, tp)),
     [applyOrder],
   );
 
   const add = useCallback(
-    (qty: number) => applyOrder((_r, bar, ledger) => marketAdd(ledger, bar, qty)),
+    (usdtNotional: number) => applyOrder((_r, bar, ledger) => marketAdd(ledger, bar, usdtNotional)),
     [applyOrder],
   );
 
   const close = useCallback(
-    (qty?: number) => applyOrder((_r, bar, ledger) => marketClose(ledger, bar, qty)),
+    (usdtNotional?: number) => applyOrder((_r, bar, ledger) => marketClose(ledger, bar, usdtNotional)),
     [applyOrder],
   );
 

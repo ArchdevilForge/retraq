@@ -242,9 +242,11 @@ export async function importTrades(
 
 export interface StatsOverview {
   total_pnl: number;
+  /** Percent 0–100 (not 0–1). Display as `${win_rate.toFixed(1)}%`, not fmtPct. */
   win_rate: number;
   profit_factor: number;
   max_drawdown: number;
+  /** Hours. */
   avg_holding_time: number;
   symbol_distribution: Record<string, number>;
   trade_count: number;
