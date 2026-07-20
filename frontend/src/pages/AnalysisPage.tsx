@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AnalysisInsights from '../components/AnalysisInsights';
 import EmptyDataset from '../components/EmptyDataset';
 import { useDataset } from '../context/DatasetContext';
 import { fetchTrades } from '../services/api';
 import type { Trade } from '../services/api';
-import { usePageEnter } from '../motion';
 import { fmtMoney, fmtPct } from '../utils/format';
 import {
   analyzeTimePatterns,
@@ -102,7 +101,6 @@ function HourStrip({ stats }: { stats: TimeAnalysis['hourlyStats'] }) {
 }
 
 export default function AnalysisPage() {
-  const shellRef = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'overview';
@@ -146,8 +144,6 @@ export default function AnalysisPage() {
     { id: 'risk', label: '风险' },
   ];
 
-  usePageEnter(shellRef, undefined, [loading, error]);
-
   if (datasetsLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -176,7 +172,7 @@ export default function AnalysisPage() {
   }
 
   return (
-    <div ref={shellRef} className="oc-page flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
+    <div className="oc-page oc-enter flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
       <div className="oc-page__frame mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 overflow-y-auto p-4">
         <header>
           <h1 className="text-[20px] font-medium tracking-tight text-wrap-balance">分析</h1>

@@ -1,21 +1,17 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
 import TradeList from '../components/TradeList';
 import { useDataset } from '../context/DatasetContext';
-import { usePageEnter } from '../motion';
 import type { Trade } from '../services/api';
 
 export default function ReplayPage() {
-  const shellRef = useRef<HTMLDivElement>(null);
   const { activeDatasetId, loading: datasetsLoading } = useDataset();
   const [symbol, setSymbol] = useState('');
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [listOpen, setListOpen] = useState(true);
   const [detailOpen, setDetailOpen] = useState(true);
-
-  usePageEnter(shellRef, '.panel:not(.panel--collapsed)');
 
   const handleSymbolChange = useCallback((nextSymbol: string) => {
     setSymbol(nextSymbol);
@@ -40,9 +36,9 @@ export default function ReplayPage() {
   }
 
   return (
-    <div ref={shellRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
       <div
-        className="oc-workbench min-h-0 flex-1 overflow-hidden"
+        className="oc-workbench oc-enter-stagger min-h-0 flex-1 overflow-hidden"
         data-list-open={listOpen}
         data-detail-open={detailOpen}
       >

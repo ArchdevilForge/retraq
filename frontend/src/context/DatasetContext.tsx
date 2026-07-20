@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ACTIVE_DATASET_STORAGE_KEY } from '../constants/datasetStorage';
-import { fetchDatasets, type Dataset } from '../services/api';
+import { ACTIVE_DATASET_STORAGE_KEY, fetchDatasets, type Dataset } from '../services/api';
 
 type DatasetContextValue = {
   datasets: Dataset[];

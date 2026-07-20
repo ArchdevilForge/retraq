@@ -278,6 +278,17 @@
   font-size: var(--oc-text-12);
 }
 
+/* Full-width segmented control (train sidebar, etc.) */
+.oc-tabs--fill {
+  display: flex;
+  width: 100%;
+}
+
+.oc-tabs--fill .oc-tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* ---- Buttons ---- */
 .oc-btn {
   display: inline-flex;
@@ -1215,6 +1226,35 @@
   text-transform: uppercase;
 }
 
+@keyframes oc-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.oc-enter {
+  animation: oc-enter 0.32s ease-out both;
+}
+
+.oc-enter-stagger > .panel:not(.panel--collapsed) {
+  animation: oc-enter 0.32s ease-out both;
+}
+
+.oc-enter-stagger > .panel:not(.panel--collapsed):nth-child(1) {
+  animation-delay: 0s;
+}
+.oc-enter-stagger > .panel:not(.panel--collapsed):nth-child(2) {
+  animation-delay: 0.05s;
+}
+.oc-enter-stagger > .panel:not(.panel--collapsed):nth-child(3) {
+  animation-delay: 0.1s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .oc-spinner {
     animation: none;
@@ -1222,6 +1262,11 @@
   }
 
   .oc-skeleton {
+    animation: none;
+  }
+
+  .oc-enter,
+  .oc-enter-stagger > .panel:not(.panel--collapsed) {
     animation: none;
   }
 }

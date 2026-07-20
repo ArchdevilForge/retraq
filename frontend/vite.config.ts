@@ -17,7 +17,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           charts: ['lightweight-charts'],
-          motion: ['gsap', '@gsap/react'],
         },
       },
     },

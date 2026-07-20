@@ -6,8 +6,8 @@
 
 ## Overview
 
-- **Active dataset**: `DatasetContext` (`frontend/src/context/DatasetContext.tsx`) + `localStorage` key `retraq.activeDatasetId` (`constants/datasetStorage.ts`).
-- Trade/stats API calls send header **`X-Dataset-Id`** via axios interceptor in `services/api.ts`.
+- **Active dataset**: `DatasetContext` (`frontend/src/context/DatasetContext.tsx`) + `localStorage` key `retraq.activeDatasetId` (`ACTIVE_DATASET_STORAGE_KEY` in `services/api.ts`).
+- Trade/stats API calls send header **`X-Dataset-Id`** via `apiFetch` in `services/api.ts` (native `fetch`).
 - **`tradesRevision`**: bump after import (`notifyTradesChanged`) so `TradeList` refetches without full page reload.
 - **No ProfileContext** — one imported file = one `datasets` row; switch in top-bar `DatasetPicker`.
 
@@ -26,13 +26,13 @@
 ## Server state
 
 - Pages fetch trades with `fetchTrades()`; pass `{ limit, maxPages }` for analysis aggregates.
-- Klines and fills are **local component state** in `ChartManagerInner` (not global).
+- Klines and fills are **local component state** in `ChartManager` (not global).
 
 ---
 
 ## UI feedback
 
-- Use **`ToastProvider` + `useToast()`** (DaisyUI `toast` + `alert`) — never `alert()` for import/errors.
+- Use **`ToastProvider` + `useToast()`** (`oc-toast` styles) — never `alert()` for import/errors.
 
 ---
 

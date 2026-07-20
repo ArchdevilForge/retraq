@@ -1,5 +1,4 @@
-import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { useGSAP, gsap } from '../motion';
+import { memo, useMemo, useState, useEffect, useCallback } from 'react';
 import { useDataset } from '../context/DatasetContext';
 import { fetchSymbolStats, fetchTrades } from '../services/api';
 import type { SymbolStats, Trade } from '../services/api';
@@ -61,7 +60,6 @@ const TradeRow = memo(function TradeRow({
 
 function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
   const { activeDatasetId, tradesRevision } = useDataset();
-  const listRef = useRef<HTMLDivElement>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [stats, setStats] = useState<SymbolStats | null>(null);
   const [symbolFilter, setSymbolFilter] = useState(ALL);
@@ -129,19 +127,6 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
       }
     },
     [symbolFilter, onSelectTrade, onSymbolChange, applySymbol],
-  );
-
-  useGSAP(
-    () => {
-      if (loading || !listRef.current || trades.length > 80) return;
-      const rows = listRef.current.querySelectorAll('[data-trade-row]');
-      gsap.fromTo(
-        rows,
-        { opacity: 0, x: -6 },
-        { opacity: 1, x: 0, duration: 0.25, stagger: 0.008, ease: 'power2.out' },
-      );
-    },
-    { dependencies: [loading, trades.length, symbolFilter, activeDatasetId], scope: listRef },
   );
 
   const totalCount = stats?.trade_count ?? 0;
@@ -215,7 +200,7 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
         </div>
       </header>
 
-      <div ref={listRef} className="panel-body min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+      <div className="panel-body min-h-0 flex-1 space-y-0.5 overflow-y-auto">
         {loading ? (
           [...Array(6)].map((_, i) => (
             <div key={i} className="h-12 oc-skeleton" />

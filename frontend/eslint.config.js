@@ -8,7 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
-    files: ['src/components/ChartManagerInner.tsx'],
+    files: ['src/components/ChartManager.tsx'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },

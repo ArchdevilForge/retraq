@@ -1,21 +1,54 @@
-import axios from 'axios';
-import { ACTIVE_DATASET_STORAGE_KEY } from '../constants/datasetStorage';
+/** localStorage key for active dataset id (also used by DatasetContext). */
+export const ACTIVE_DATASET_STORAGE_KEY = 'retraq.activeDatasetId';
 
-axios.interceptors.request.use((config) => {
-  const url = config.url ?? '';
-  const path = url.split('?')[0];
-  const needsDataset =
-    path.startsWith('/api/stats/') ||
-    (path.startsWith('/api/trades') && !path.startsWith('/api/trades/import'));
-  if (needsDataset) {
-    const id = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
-    if (id) {
-      config.headers = config.headers ?? {};
-      config.headers['X-Dataset-Id'] = id;
-    }
+type ApiFetchInit = RequestInit & {
+  params?: Record<string, string | number | boolean | undefined | null>;
+  /** Skip dataset header even on dataset-scoped paths. */
+  skipDataset?: boolean;
+};
+
+function needsDatasetHeader(path: string): boolean {
+  const base = path.split('?')[0];
+  return (
+    base.startsWith('/api/stats/') ||
+    (base.startsWith('/api/trades') && !base.startsWith('/api/trades/import'))
+  );
+}
+
+function buildUrl(path: string, params?: ApiFetchInit['params']): string {
+  if (!params) return path;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null) continue;
+    qs.set(k, String(v));
   }
-  return config;
-});
+  const s = qs.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
+  const { params, skipDataset, headers: initHeaders, ...rest } = init;
+  const headers = new Headers(initHeaders);
+  if (!skipDataset && needsDatasetHeader(path)) {
+    const id = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
+    if (id) headers.set('X-Dataset-Id', id);
+  }
+  const res = await fetch(buildUrl(path, params), { ...rest, headers });
+  if (!res.ok) {
+    let detail: string | undefined;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (typeof body.detail === 'string') detail = body.detail;
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail ?? `HTTP ${res.status}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
 
 export interface Kline {
   time: number;
@@ -46,7 +79,7 @@ export interface TradeFill {
 }
 
 export async function fetchTradeFills(tradeId: number): Promise<TradeFill[]> {
-  const { data } = await axios.get<{ data: TradeFill[] }>(`/api/trades/${tradeId}/fills`);
+  const data = await apiFetch<{ data: TradeFill[] }>(`/api/trades/${tradeId}/fills`);
   return data.data;
 }
 
@@ -82,42 +115,41 @@ export interface Dataset {
 }
 
 export async function fetchDatasets(): Promise<{ data: Dataset[] }> {
-  const { data } = await axios.get<{ data: Dataset[] }>('/api/datasets');
-  return data;
+  return apiFetch<{ data: Dataset[] }>('/api/datasets');
 }
 
 export async function updateDataset(id: number, name: string): Promise<Dataset> {
-  const { data } = await axios.patch<Dataset>(`/api/datasets/${id}`, { name });
-  return data;
+  return apiFetch<Dataset>(`/api/datasets/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
 }
 
 export async function deleteDataset(id: number): Promise<void> {
-  await axios.delete(`/api/datasets/${id}`);
+  await apiFetch<void>(`/api/datasets/${id}`, { method: 'DELETE' });
 }
 
 export async function fetchImportTemplates(): Promise<{ id: string; label: string }[]> {
-  const { data } = await axios.get<{ templates: { id: string; label: string }[] }>(
-    '/api/import/templates',
-  );
+  const data = await apiFetch<{ templates: { id: string; label: string }[] }>('/api/import/templates');
   return data.templates;
 }
 
 export async function fetchKlines(
   symbol: string,
   timeframe: Timeframe,
-  options?: { start?: number; end?: number; limit?: number },
+  options?: { start?: number; end?: number; limit?: number; forceRefresh?: boolean },
 ): Promise<Kline[]> {
   const url = `/api/klines/${symbol}/${timeframe}`;
-  const requestConfig = {
-    params: { ...options, nocache: 1, _cb: Date.now() },
-    headers: { 'Cache-Control': 'no-cache' },
-  } as const;
+  const { forceRefresh, ...range } = options ?? {};
+  const params: Record<string, string | number | boolean | undefined> = { ...range };
+  if (forceRefresh) params.nocache = 1;
 
   const maxAttempts = 4;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const { data } = await axios.get<{ data: KlineApiRow[] }>(url, requestConfig);
+      const data = await apiFetch<{ data: KlineApiRow[] }>(url, { params });
       return data.data.map((k) => ({
         time: Math.floor(k.timestamp / 1000),
         open: k.open,
@@ -128,10 +160,11 @@ export async function fetchKlines(
       }));
     } catch (err) {
       lastError = err;
-      const axiosError = err as { response?: { status?: number } };
-      const status = axiosError?.response?.status;
+      const status = (err as { status?: number })?.status;
       const shouldRetry = status == null || status === 502 || status === 503 || status === 504;
       if (!shouldRetry || attempt === maxAttempts) break;
+      // next attempt forces refresh in case stale edge cache
+      params.nocache = 1;
       await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
   }
@@ -144,8 +177,7 @@ export interface SymbolStats {
 }
 
 export async function fetchSymbolStats(): Promise<SymbolStats> {
-  const { data } = await axios.get<SymbolStats>('/api/stats/symbols');
-  return data;
+  return apiFetch<SymbolStats>('/api/stats/symbols');
 }
 
 export async function fetchTrades(
@@ -158,7 +190,9 @@ export async function fetchTrades(
 
   const allTrades: Trade[] = [];
   for (let page = startPage; page < startPage + maxPages; page += 1) {
-    const { data } = await axios.get<TradesResponse>('/api/trades', { params: { ...filters, page, limit } });
+    const data = await apiFetch<TradesResponse>('/api/trades', {
+      params: { ...filters, page, limit },
+    });
     allTrades.push(...data.data);
     if (allTrades.length >= data.total || data.data.length === 0) break;
   }
@@ -167,9 +201,7 @@ export async function fetchTrades(
 }
 
 function importErrorMessage(err: unknown): string {
-  const ax = err as { response?: { status?: number; data?: { detail?: string } } };
-  const detail = ax.response?.data?.detail;
-  if (typeof detail === 'string') return detail;
+  if (err instanceof Error && err.message && !err.message.startsWith('HTTP ')) return err.message;
   return '导入失败，请检查文件与模板';
 }
 
@@ -194,15 +226,15 @@ export async function importTrades(
   formData.append('file', file);
   const label = options?.label ?? file.name.replace(/\.(xlsx|xls|csv)$/i, '');
   try {
-    const { data } = await axios.post<ImportResult>('/api/trades/import', formData, {
+    return await apiFetch<ImportResult>('/api/trades/import', {
+      method: 'POST',
       params: {
         template,
         replace: options?.replace !== false,
         label,
       },
-      headers: { 'Content-Type': 'multipart/form-data' },
+      body: formData,
     });
-    return data;
   } catch (err) {
     throw new Error(importErrorMessage(err));
   }
@@ -219,6 +251,5 @@ export interface StatsOverview {
 }
 
 export async function fetchStats(): Promise<StatsOverview> {
-  const { data } = await axios.get('/api/stats/overview');
-  return data;
+  return apiFetch<StatsOverview>('/api/stats/overview');
 }

@@ -305,9 +305,10 @@ class TradeImporter:
             return int(ts.timestamp() * 1000)
         if hasattr(ts, 'timestamp'):  # datetime.datetime
             if ts.tzinfo is None:
-                import pytz
-                tz = pytz.timezone('Asia/Shanghai')
-                ts = tz.localize(ts)
+                from datetime import timezone
+                from zoneinfo import ZoneInfo
+
+                ts = ts.replace(tzinfo=ZoneInfo('Asia/Shanghai')).astimezone(timezone.utc)
             return int(ts.timestamp() * 1000)
         if isinstance(ts, str):
             dt = pd.to_datetime(ts).tz_localize('Asia/Shanghai')

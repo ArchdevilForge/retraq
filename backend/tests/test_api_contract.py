@@ -1,7 +1,7 @@
 """API contract: response shapes align with frontend/src/services/api.ts."""
 from fastapi.testclient import TestClient
 
-from api_contract import (
+from tests.api_contract import (
     DATASET_FIELDS,
     KLINE_FIELDS,
     STATS_OVERVIEW_FIELDS,

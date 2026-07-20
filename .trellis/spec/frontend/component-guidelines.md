@@ -14,15 +14,16 @@
 
 ## Chart module
 
-- **Entry**: `ChartManager.tsx` re-exports `ChartManagerInner.tsx` (thin file avoids Vite HMR default-export glitches on large modules).
+- **Entry**: `ChartManager.tsx` (replay) and `TrainingChart.tsx` (train); shared mount via `utils/candleChart.ts` `mountCandleVolumeChart`.
 - **Drawing**: User horizontal lines via `createPriceLine` (solid, **lineWidth 3**); ruler via `chartRulerOverlay.ts` canvas overlay (two-click + move preview).
 - **Trade overlays**: Entry/exit price lines + markers; fill qty shown as **USDT notional** (`price × qty`, langge uses `trade.margin`).
+- **Motion**: page/navbar enter uses CSS `.oc-enter` / `.oc-enter-stagger`; respects `prefers-reduced-motion`.
 
 ---
 
 ## Top bar
 
-- **Navbar**: 3-column grid — logo | centered tabs (复盘/训练/分析) | `DatasetPicker` (import + switch).
+- **Navbar**: 3-column grid — logo | centered tabs (复盘/训练/分析/学习) | `DatasetPicker` (import + switch).
 - **训练** (`/train`): independent of dataset; `TrainPage` + `TrainingChart` + `useTrainingRun`; sim state is in-memory only (see root `CONTEXT.md`).
 - Import: `template=auto`, toast on success/error.
 
