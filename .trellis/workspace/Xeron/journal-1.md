@@ -71,3 +71,41 @@ Grilled independent K线训练 (future mask, medium sim positions, random/manual
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Ponytail audit cleanup
+
+**Date**: 2026-07-20
+**Task**: 07-20-ponytail-audit-cleanup
+**Branch**: `main`
+
+### Summary
+
+Repo-wide ponytail audit then cleanup: remove gsap/axios/daisyui/pytz and dead UI; CSS enter motion; native fetch api client; shared `mountCandleVolumeChart`; move API contract fields to tests. Check green; specs synced; archived.
+
+### Main Changes
+
+- Drop runtime deps: gsap, @gsap/react, daisyui, axios, pytz
+- Delete StatsBar/StatsPanel/motion/generateInsights; ChartManager is real component
+- `api.ts` fetch + dataset header; klines cache-first with retry force
+- `candleChart.ts` shared mount; CSS `.oc-enter`
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc63478` | refactor: drop unused deps and dead code after ponytail audit |
+| `92b76dd` | chore(task): archive 07-20-ponytail-audit-cleanup |
+
+### Testing
+
+- [OK] frontend typecheck + lint (0 errors)
+- [OK] backend pytest 23 + ruff + mypy
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
