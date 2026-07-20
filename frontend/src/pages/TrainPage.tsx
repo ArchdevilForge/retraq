@@ -6,11 +6,13 @@ import { TIMEFRAMES, type Timeframe } from '../services/api';
 import {
   DEFAULT_CONTEXT_BARS,
   DEFAULT_FEE_RATE,
+  DEFAULT_ORDER_USDT,
   DEFAULT_START_EQUITY,
   loadTrainingPool,
   normalizeSymbol,
   saveTrainingPool,
   availableEquity,
+  baseToUsdt,
   unrealizedPnl,
   usedMargin,
   MAX_LEVERAGE,
@@ -46,6 +48,9 @@ export default function TrainPage() {
     add,
     close,
     setStops,
+    setCompareSymbol,
+    compareLoading,
+    compareError,
     visibleMain,
     visibleCompare,
     markPrice,
@@ -58,15 +63,13 @@ export default function TrainPage() {
   const [startLocal, setStartLocal] = useState(range0.start);
   const [endLocal, setEndLocal] = useState(range0.end);
   const [contextBars, setContextBars] = useState(DEFAULT_CONTEXT_BARS);
-  const [compareSymbol, setCompareSymbol] = useState('ETH-USDT');
-  const [compareOn, setCompareOn] = useState(false);
   const [startEquity, setStartEquity] = useState(DEFAULT_START_EQUITY);
   const [feeRatePct, setFeeRatePct] = useState(DEFAULT_FEE_RATE * 100);
   const [poolText, setPoolText] = useState(() => loadTrainingPool().join('\n'));
   const [showPool, setShowPool] = useState(false);
 
   const [direction, setDirection] = useState<'long' | 'short'>('long');
-  const [qty, setQty] = useState('0.01');
+  const [usdtSize, setUsdtSize] = useState(String(DEFAULT_ORDER_USDT));
   const [leverage, setLeverage] = useState(5);
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
@@ -99,7 +102,6 @@ export default function TrainPage() {
   const onStart = async () => {
     setError(null);
     const feeRate = feeRatePct / 100;
-    const cmp = compareOn ? normalizeSymbol(compareSymbol) : null;
     if (mode === 'manual') {
       const startMs = new Date(startLocal).getTime();
       const endMs = new Date(endLocal).getTime();
@@ -113,7 +115,6 @@ export default function TrainPage() {
         startMs,
         endMs,
         contextBars,
-        compareSymbol: cmp,
         startEquity,
         feeRate,
       });
@@ -127,7 +128,6 @@ export default function TrainPage() {
         pool,
         timeframe,
         contextBars,
-        compareSymbol: cmp,
         startEquity,
         feeRate,
       });
@@ -141,12 +141,12 @@ export default function TrainPage() {
   };
 
   const handleOpen = () => {
-    const q = Number(qty);
-    if (!Number.isFinite(q) || q <= 0) {
-      toast('数量无效', 'error');
+    const u = Number(usdtSize);
+    if (!Number.isFinite(u) || u <= 0) {
+      toast('金额无效（USDT）', 'error');
       return;
     }
-    const err = open(direction, q, leverage, parseOpt(sl), parseOpt(tp));
+    const err = open(direction, u, leverage, parseOpt(sl), parseOpt(tp));
     if (err) toast(err, 'error');
   };
 
@@ -154,7 +154,7 @@ export default function TrainPage() {
     <div className="flex h-full min-h-0 flex-1 overflow-hidden p-2">
       <div className="oc-workbench min-h-0 flex-1 overflow-hidden" data-list-open="true" data-detail-open="true">
         <aside className="panel flex min-h-0 min-w-0 flex-col gap-3 overflow-auto p-3">
-          <div className="oc-tabs">
+          <div className="oc-tabs oc-tabs--fill">
             <button
               type="button"
               className={`oc-tab${mode === 'manual' ? ' oc-tab--active' : ''}`}
@@ -245,21 +245,8 @@ export default function TrainPage() {
             />
           </label>
 
-          <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" checked={compareOn} onChange={(e) => setCompareOn(e.target.checked)} />
-            对比盘
-          </label>
-          {compareOn ? (
-            <input
-              className="oc-input-wrap text-xs"
-              value={compareSymbol}
-              onChange={(e) => setCompareSymbol(e.target.value)}
-              placeholder="BTC-USDT"
-            />
-          ) : null}
-
           <label className="flex flex-col gap-1 text-xs">
-            虚拟本金
+            虚拟本金 (USDT)
             <input
               type="number"
               className="oc-input-wrap"
@@ -329,10 +316,18 @@ export default function TrainPage() {
               </div>
               <TrainingChart
                 symbol={run.scenario.symbol}
+                timeframe={run.scenario.timeframe}
                 klines={visibleMain}
+                scenarioFromSec={run.bars[0]?.time ?? 0}
+                scenarioToSec={run.bars[run.bars.length - 1]?.time ?? 0}
                 compareSymbol={run.scenario.compareSymbol}
                 compareKlines={visibleCompare}
+                compareLoading={compareLoading}
+                compareError={compareError}
+                symbolOptions={pool}
                 markers={run.markers}
+                onSelectCompare={(s) => void setCompareSymbol(s)}
+                onClearCompare={() => void setCompareSymbol(null)}
               />
             </>
           )}
@@ -360,10 +355,15 @@ export default function TrainPage() {
           {run?.position ? (
             <div className="space-y-1 text-xs">
               <div>
-                {run.position.direction === 'long' ? '多' : '空'} {run.position.qty} @{' '}
+                {run.position.direction === 'long' ? '多' : '空'}{' '}
+                {baseToUsdt(run.position.qty, run.position.entryPrice).toFixed(2)} U @{' '}
                 {run.position.entryPrice.toFixed(4)} · {run.position.leverage}x
               </div>
-              <div>占用保证金 {usedMargin(run.position).toFixed(2)}</div>
+              <div className="opacity-70">
+                约 {(run.position.qty).toPrecision(6)} 币 · 现价名义{' '}
+                {mark ? baseToUsdt(run.position.qty, mark).toFixed(2) : '—'} U
+              </div>
+              <div>占用保证金 {usedMargin(run.position).toFixed(2)} U</div>
               <div className={uPnl >= 0 ? 'text-[var(--oc-up,#30D158)]' : 'text-[var(--oc-down,#FF3B30)]'}>
                 浮盈 {uPnl.toFixed(2)}
               </div>
@@ -390,22 +390,22 @@ export default function TrainPage() {
                 更新止损止盈
               </button>
               <label className="flex flex-col gap-1">
-                加仓数量
-                <input className="oc-input-wrap" value={qty} onChange={(e) => setQty(e.target.value)} />
+                加仓金额 (USDT)
+                <input className="oc-input-wrap" value={usdtSize} onChange={(e) => setUsdtSize(e.target.value)} />
               </label>
               <button
                 type="button"
                 className="oc-btn oc-btn--sm oc-btn--secondary w-full"
                 disabled={run.locked}
                 onClick={() => {
-                  const err = add(Number(qty));
+                  const err = add(Number(usdtSize));
                   if (err) toast(err, 'error');
                 }}
               >
                 加仓
               </button>
               <label className="flex flex-col gap-1">
-                平仓数量（空=全平）
+                平仓金额 USDT（空=全平）
                 <input className="oc-input-wrap" value={closeQty} onChange={(e) => setCloseQty(e.target.value)} />
               </label>
               <button
@@ -422,7 +422,7 @@ export default function TrainPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2 text-xs">
-              <div className="oc-tabs">
+              <div className="oc-tabs oc-tabs--fill">
                 <button
                   type="button"
                   className={`oc-tab${direction === 'long' ? ' oc-tab--active' : ''}`}
@@ -439,8 +439,8 @@ export default function TrainPage() {
                 </button>
               </div>
               <label className="flex flex-col gap-1">
-                数量（币）
-                <input className="oc-input-wrap" value={qty} onChange={(e) => setQty(e.target.value)} />
+                名义金额 (USDT)
+                <input className="oc-input-wrap" value={usdtSize} onChange={(e) => setUsdtSize(e.target.value)} />
               </label>
               <label className="flex flex-col gap-1">
                 杠杆 1–{MAX_LEVERAGE}

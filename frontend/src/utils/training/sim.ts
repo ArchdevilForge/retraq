@@ -90,11 +90,22 @@ function closeQty(
   };
 }
 
+/** Convert USDT notional → base qty at price. */
+export function usdtToBase(usdt: number, price: number): number {
+  if (!(price > 0) || !(usdt > 0)) return 0;
+  return usdt / price;
+}
+
+export function baseToUsdt(qty: number, price: number): number {
+  return Math.abs(qty * price);
+}
+
+/** Open with USDT notional (quote). Internal book keeps base qty. */
 export function marketOpen(
   ledger: Ledger,
   bar: Kline,
   direction: Direction,
-  qty: number,
+  usdtNotional: number,
   leverage: number,
   stopLoss?: number | null,
   takeProfit?: number | null,
@@ -105,9 +116,11 @@ export function marketOpen(
     }
     return { ok: false, message: '已有仓位，请使用加仓' };
   }
-  if (!(qty > 0)) return { ok: false, message: '数量须大于 0' };
+  if (!(usdtNotional > 0)) return { ok: false, message: '金额须大于 0' };
   const lev = Math.min(MAX_LEVERAGE, Math.max(1, leverage));
   const price = bar.close;
+  const qty = usdtToBase(usdtNotional, price);
+  if (!(qty > 0)) return { ok: false, message: '金额无效' };
   const margin = requiredMargin(price, qty, lev);
   const fee = feeOf(price, qty, ledger.account.feeRate);
   if (margin + fee > ledger.account.equity + 1e-9) {
@@ -134,11 +147,14 @@ export function marketOpen(
   };
 }
 
-export function marketAdd(ledger: Ledger, bar: Kline, qty: number): SimResult<Ledger> {
+/** Add with USDT notional at current close. */
+export function marketAdd(ledger: Ledger, bar: Kline, usdtNotional: number): SimResult<Ledger> {
   const pos = ledger.position;
   if (!pos) return { ok: false, message: '无仓位可加' };
-  if (!(qty > 0)) return { ok: false, message: '数量须大于 0' };
+  if (!(usdtNotional > 0)) return { ok: false, message: '金额须大于 0' };
   const price = bar.close;
+  const qty = usdtToBase(usdtNotional, price);
+  if (!(qty > 0)) return { ok: false, message: '金额无效' };
   const margin = requiredMargin(price, qty, pos.leverage);
   const fee = feeOf(price, qty, ledger.account.feeRate);
   const free = availableEquity(ledger.account, pos, price);
@@ -156,11 +172,18 @@ export function marketAdd(ledger: Ledger, bar: Kline, qty: number): SimResult<Le
   };
 }
 
-export function marketClose(ledger: Ledger, bar: Kline, qty?: number): SimResult<Ledger> {
+/** Close full or partial by USDT notional at fill price (close). Omit usdt = full close. */
+export function marketClose(ledger: Ledger, bar: Kline, usdtNotional?: number): SimResult<Ledger> {
   const pos = ledger.position;
   if (!pos) return { ok: false, message: '当前无仓位' };
-  const q = qty == null ? pos.qty : qty;
-  return closeQty(ledger, bar, bar.close, q, q >= pos.qty - 1e-12 ? '平仓' : '减仓');
+  if (usdtNotional == null) {
+    return closeQty(ledger, bar, bar.close, pos.qty, '平仓');
+  }
+  if (!(usdtNotional > 0)) return { ok: false, message: '金额须大于 0' };
+  const price = bar.close;
+  let qty = usdtToBase(usdtNotional, price);
+  if (qty >= pos.qty - 1e-12) qty = pos.qty;
+  return closeQty(ledger, bar, price, qty, qty >= pos.qty - 1e-12 ? '平仓' : '减仓');
 }
 
 export function updateStops(

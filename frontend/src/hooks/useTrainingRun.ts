@@ -9,6 +9,7 @@ import {
   marketAdd,
   marketClose,
   marketOpen,
+  normalizeSymbol,
   pickRandomScenario,
   updateStops,
   visibleBars,
@@ -110,6 +111,8 @@ export function useTrainingRun() {
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
   const playRef = useRef(false);
   const runRef = useRef(run);
   runRef.current = run;
@@ -335,6 +338,51 @@ export function useTrainingRun() {
 
   const markPrice = run?.bars[run.cursorIndex]?.close ?? null;
 
+  const setCompareSymbol = useCallback(async (raw: string | null) => {
+    const current = runRef.current;
+    if (!current) return;
+    if (!raw) {
+      setCompareError(null);
+      setRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              compareBars: null,
+              scenario: { ...prev.scenario, compareSymbol: null },
+            }
+          : prev,
+      );
+      return;
+    }
+    const sym = normalizeSymbol(raw);
+    if (!sym || sym === current.scenario.symbol) {
+      setCompareError('对比交易对须与主图不同');
+      return;
+    }
+    setCompareLoading(true);
+    setCompareError(null);
+    try {
+      const compareBars = await fetchKlines(sym, current.scenario.timeframe, {
+        start: current.scenario.startMs,
+        end: current.scenario.endMs,
+      });
+      if (!compareBars.length) throw new Error('对比 K 线为空');
+      setRun((prev) =>
+        prev
+          ? {
+              ...prev,
+              compareBars,
+              scenario: { ...prev.scenario, compareSymbol: sym },
+            }
+          : prev,
+      );
+    } catch (e) {
+      setCompareError(e instanceof Error ? e.message : '对比 K 线加载失败');
+    } finally {
+      setCompareLoading(false);
+    }
+  }, []);
+
   return {
     run,
     loading,
@@ -354,6 +402,9 @@ export function useTrainingRun() {
     add,
     close,
     setStops,
+    setCompareSymbol,
+    compareLoading,
+    compareError,
     visibleMain,
     visibleCompare,
     markPrice,

@@ -61,7 +61,9 @@ export type TrainingRun = {
   markers: SimMarker[];
 };
 
-export const DEFAULT_START_EQUITY = 10_000;
+export const DEFAULT_START_EQUITY = 100;
+/** Default order size in USDT notional (quote). */
+export const DEFAULT_ORDER_USDT = 20;
 export const DEFAULT_FEE_RATE = 0.0005;
 export const DEFAULT_CONTEXT_BARS = 50;
 export const MAX_LEVERAGE = 20;

@@ -25,11 +25,11 @@ A closed (or open) real trade aggregated from fills in a dataset.
 _Avoid_: using this alone for training paper exposure (use 模拟仓位)
 
 **模拟仓位 (Simulated Position)**:
-Paper net exposure during K-line Training: one direction at a time, sized in base-asset quantity, with leverage, fees, optional stop/take-profit, add-on entries (weighted average price), and partial closes. Not a real Trade/Fill; flipping direction requires flat first.
+Paper net exposure during K-line Training: one direction at a time. UI sizes open/add/close in USDT notional; ledger keeps base qty. Leverage, fees, optional stop/take-profit, add-on entries (weighted average price), and partial closes. Not a real Trade/Fill; flipping direction requires flat first.
 _Avoid_: Trade, 成交, 仓位 without qualifier, hedge dual-side book
 
 **虚拟权益 (Virtual Equity)**:
-Per Training Run paper balance used for margin and fee accounting. Chosen at run start (default 10_000 USDT, configurable fee rate), then locked for the run. No funding rate and no liquidation engine in MVP.
+Per Training Run paper balance used for margin and fee accounting. Chosen at run start (default 100 USDT, configurable fee rate), then locked for the run. No funding rate and no liquidation engine in MVP.
 _Avoid_: exchange wallet, dataset balance
 
 **回放光标 (Playback Cursor)**:
