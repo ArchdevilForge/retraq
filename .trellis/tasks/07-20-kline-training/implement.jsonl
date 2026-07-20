@@ -1,0 +1,7 @@
+{"file": "CONTEXT.md", "reason": "Domain glossary for training vs replay"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component conventions"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS contracts"}
+{"file": "docs/PRODUCT.md", "reason": "Product principles"}
+{"file": "docs/DESIGN.md", "reason": "Visual system"}

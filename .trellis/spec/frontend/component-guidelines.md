@@ -22,7 +22,8 @@
 
 ## Top bar
 
-- **Navbar**: 3-column grid — logo | centered tabs (复盘/分析) | `DatasetPicker` (import + switch).
+- **Navbar**: 3-column grid — logo | centered tabs (复盘/训练/分析) | `DatasetPicker` (import + switch).
+- **训练** (`/train`): independent of dataset; `TrainPage` + `TrainingChart` + `useTrainingRun`; sim state is in-memory only (see root `CONTEXT.md`).
 - Import: `template=auto`, toast on success/error.
 
 ---

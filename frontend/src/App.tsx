@@ -7,6 +7,7 @@ import ReplayPage from './pages/ReplayPage';
 
 const AnalysisPage = lazy(() => import('./pages/AnalysisPage'));
 const LearnPage = lazy(() => import('./pages/LearnPage'));
+const TrainPage = lazy(() => import('./pages/TrainPage'));
 
 function RouteFallback() {
   return (
@@ -28,6 +29,7 @@ function App() {
             <Route path="/" element={<Navigate to="/replay" replace />} />
             <Route path="/replay" element={<ReplayPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
+            <Route path="/train" element={<TrainPage />} />
             <Route path="/learn" element={<LearnPage />} />
             <Route path="*" element={<Navigate to="/replay" replace />} />
           </Routes>

@@ -1,0 +1,5 @@
+{"file": "CONTEXT.md", "reason": "Domain glossary"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality gates"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component conventions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality if touched"}
+{"file": "docs/PRODUCT.md", "reason": "Product principles"}
