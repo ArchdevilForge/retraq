@@ -1,0 +1,8 @@
+{"type":"spec","path":".trellis/spec/frontend/component-guidelines.md"}
+{"type":"spec","path":".trellis/spec/backend"}
+{"type":"file","path":"frontend/src/services/api.ts"}
+{"type":"file","path":"frontend/src/components/ChartManagerInner.tsx"}
+{"type":"file","path":"frontend/src/components/TrainingChart.tsx"}
+{"type":"file","path":"frontend/src/utils/tradeAnalysis.ts"}
+{"type":"file","path":"backend/services/trade_importer.py"}
+{"type":"file","path":"backend/api_contract.py"}

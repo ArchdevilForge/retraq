@@ -1,0 +1,3 @@
+{"type":"spec","path":".trellis/spec/frontend/component-guidelines.md"}
+{"type":"cmd","run":"cd frontend && pnpm typecheck && pnpm run lint"}
+{"type":"cmd","run":"cd backend && uv run pytest -q && uv run ruff check . && uv run mypy ."}
