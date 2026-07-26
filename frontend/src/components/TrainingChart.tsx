@@ -42,6 +42,7 @@ type Props = {
   compareError?: string | null;
   symbolOptions?: string[];
   markers?: SimMarker[];
+  liqPrice?: number | null;
   onSelectCompare?: (symbol: string) => void;
   onClearCompare?: () => void;
 };
@@ -130,6 +131,7 @@ export default function TrainingChart({
   compareError = null,
   symbolOptions = [],
   markers,
+  liqPrice = null,
   onSelectCompare,
   onClearCompare,
 }: Props) {
@@ -369,6 +371,27 @@ export default function TrainingChart({
     syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
     if (rulerResultRef.current || rulerCornerRef.current) paintRulerOverlay();
   }, [klines, markers, theme, paintRulerOverlay, chartEpoch]);
+
+  // liquidation price line
+  useEffect(() => {
+    const series = mainApi.current?.series;
+    if (!series || liqPrice == null || !Number.isFinite(liqPrice)) return;
+    const line = series.createPriceLine({
+      price: liqPrice,
+      color: readChartTheme().down,
+      lineWidth: 1,
+      lineStyle: 2,
+      axisLabelVisible: true,
+      title: '强平',
+    });
+    return () => {
+      try {
+        series.removePriceLine(line);
+      } catch {
+        /* series already disposed */
+      }
+    };
+  }, [liqPrice, theme, chartEpoch]);
 
   // compare data
   useEffect(() => {

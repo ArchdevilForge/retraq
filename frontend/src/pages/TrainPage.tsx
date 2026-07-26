@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import TrainingChart from '../components/TrainingChart';
 import { useToast } from '../components/ToastHost';
 import { useTrainingRun } from '../hooks/useTrainingRun';
@@ -6,19 +7,101 @@ import { TIMEFRAMES, type Timeframe } from '../services/api';
 import {
   DEFAULT_CONTEXT_BARS,
   DEFAULT_FEE_RATE,
-  DEFAULT_ORDER_USDT,
+  DEFAULT_LEVERAGE,
+  DEFAULT_MARGIN_FRACTION,
   DEFAULT_START_EQUITY,
   loadTrainingPool,
   normalizeSymbol,
   saveTrainingPool,
   availableEquity,
-  baseToUsdt,
+  clampLeverage,
+  liquidationDistance,
+  liquidationPrice,
+  marginToNotional,
+  maxOpenableMargin,
+  notionalOf,
   unrealizedPnl,
   usedMargin,
+  type SimPosition,
   MAX_LEVERAGE,
   MIN_SCENARIO_BARS,
   MAX_SCENARIO_BARS,
 } from '../utils/training';
+
+/** Below this the 强平价 is close enough that the size, not the thesis, decides the outcome. */
+const LIQ_WARN_DISTANCE = 0.1;
+const MARGIN_PRESETS = [0.25, 0.5, 0.75, 1];
+const CLOSE_FRACTIONS = [0.25, 0.5, 1];
+
+function pct(v: number, digits = 1): string {
+  return `${(v * 100).toFixed(digits)}%`;
+}
+
+/**
+ * Committed margin a fraction of the base equity resolves to. The taker fee on the
+ * notional is charged on top of the margin, so 100% has to leave room for it or the
+ * order would always be rejected.
+ */
+function resolveMargin(base: number, fraction: number, leverage: number, feeRate: number): number {
+  if (!(base > 0)) return 0;
+  // 100% means "as much as still opens": the open fee is charged on top of the margin.
+  return Math.max(0, Math.min(base * fraction, maxOpenableMargin(base, leverage, feeRate)));
+}
+
+function MarginSizer({
+  label,
+  fraction,
+  onFraction,
+  margin,
+  notional,
+}: {
+  label: string;
+  fraction: number;
+  onFraction: (f: number) => void;
+  margin: number;
+  notional: number;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="oc-text-faint">{label}</span>
+      <div className="oc-tabs oc-tabs--fill">
+        {MARGIN_PRESETS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={`oc-tab${Math.abs(fraction - p) < 1e-9 ? ' oc-tab--active' : ''}`}
+            onClick={() => onFraction(p)}
+          >
+            {Math.round(p * 100)}%
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        className="w-full accent-current"
+        min={5}
+        max={100}
+        step={5}
+        value={Math.round(fraction * 100)}
+        onChange={(e) => onFraction(Number(e.target.value) / 100)}
+      />
+      <div className="oc-text-faint">
+        {Math.round(fraction * 100)}% · 保证金 {margin.toFixed(2)} U · 名义 {notional.toFixed(2)} U
+      </div>
+    </div>
+  );
+}
+
+function LiqReadout({ liq, distance }: { liq: number | null; distance: number | null }) {
+  if (liq == null || distance == null) {
+    return <div className="oc-text-faint">该仓位不会被强平</div>;
+  }
+  return (
+    <div className={distance < LIQ_WARN_DISTANCE ? 'oc-text-loss' : undefined}>
+      强平价 {liq.toFixed(4)} · 距现价 {pct(distance, 2)}
+    </div>
+  );
+}
 
 function defaultRange(): { start: string; end: string } {
   const end = new Date();
@@ -56,6 +139,7 @@ export default function TrainPage() {
     visibleMain,
     visibleCompare,
     markPrice,
+    liqPrice,
   } = useTrainingRun();
 
   const range0 = useMemo(() => defaultRange(), []);
@@ -71,13 +155,16 @@ export default function TrainPage() {
   const [feeRatePct, setFeeRatePct] = useState(DEFAULT_FEE_RATE * 100);
   const [poolText, setPoolText] = useState(() => loadTrainingPool().join('\n'));
   const [showPool, setShowPool] = useState(false);
+  // Scenario config is a once-per-run wizard; it gives the chart its width back
+  // as soon as a run starts. 开新局 stays reachable from the chart header.
+  const [setupOpen, setSetupOpen] = useState(true);
+  const [detailOpen, setDetailOpen] = useState(true);
 
   const [direction, setDirection] = useState<'long' | 'short'>('long');
-  const [usdtSize, setUsdtSize] = useState(String(DEFAULT_ORDER_USDT));
-  const [leverage, setLeverage] = useState(5);
+  const [marginFraction, setMarginFraction] = useState(DEFAULT_MARGIN_FRACTION);
+  const [leverage, setLeverage] = useState(DEFAULT_LEVERAGE);
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
-  const [closeQty, setCloseQty] = useState('');
 
   const pool = useMemo(
     () =>
@@ -90,8 +177,44 @@ export default function TrainPage() {
 
   const mark = markPrice ?? 0;
   const uPnl = run?.position && mark ? unrealizedPnl(run.position, mark) : 0;
-  const free =
-    run && mark ? availableEquity(run.account, run.position, mark) : run?.account.equity ?? 0;
+  // Floors at 0: unrealized loss on a full-size position can drive the raw figure
+  // negative, and "可用 -19.82 U" is not a thing a trader can act on.
+  const free = Math.max(
+    0,
+    run && mark ? availableEquity(run.account, run.position, mark) : run?.account.equity ?? 0,
+  );
+
+  const feeRate = run?.account.feeRate ?? DEFAULT_FEE_RATE;
+  const orderLeverage = run?.position?.leverage ?? leverage;
+  const orderMargin = resolveMargin(free, marginFraction, orderLeverage, feeRate);
+  const orderNotional = marginToNotional(orderMargin, orderLeverage);
+
+  // Price the order the sim would actually build, so the preview and the fill agree.
+  const preview = useMemo(() => {
+    if (!run || run.position || !(mark > 0) || !(orderMargin > 0)) return null;
+    const lev = clampLeverage(leverage);
+    const qty = marginToNotional(orderMargin, lev) / mark;
+    if (!(qty > 0)) return null;
+    const pos: SimPosition = {
+      direction,
+      qty,
+      entryPrice: mark,
+      leverage: lev,
+      stopLoss: null,
+      takeProfit: null,
+      cyclePnl: 0,
+      cycleFees: 0,
+      openedAt: 0,
+    };
+    return {
+      liq: liquidationPrice(run.account, pos),
+      distance: liquidationDistance(run.account, pos, mark),
+    };
+  }, [run, mark, orderMargin, leverage, direction]);
+
+  const holdDistance =
+    run?.position && mark ? liquidationDistance(run.account, run.position, mark) : null;
+  const postmortem = run?.postmortem ?? null;
 
   // Sync SL/TP fields from position levels only (not on qty/entry churn like add)
   const posSl = run?.position?.stopLoss;
@@ -170,20 +293,52 @@ export default function TrainPage() {
     return Number.isFinite(n) ? n : null;
   };
 
-  const handleOpen = () => {
-    const u = Number(usdtSize);
-    if (!Number.isFinite(u) || u <= 0) {
-      toast('金额无效（USDT）', 'error');
+  // `bars` is only ever replaced when a run is (re)built, so it marks a real start
+  // rather than a step within the current run.
+  const startedBarsRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!run) {
+      startedBarsRef.current = null;
       return;
     }
-    const err = open(direction, u, leverage, parseOpt(sl), parseOpt(tp));
+    if (run.bars !== startedBarsRef.current) {
+      startedBarsRef.current = run.bars;
+      setSetupOpen(false);
+    }
+  }, [run]);
+
+  const handleOpen = () => {
+    if (!(orderMargin > 0)) {
+      toast('保证金无效', 'error');
+      return;
+    }
+    const err = open(direction, orderMargin, clampLeverage(leverage), parseOpt(sl), parseOpt(tp));
     if (err) toast(err, 'error');
   };
 
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden p-2">
-      <div className="oc-workbench min-h-0 flex-1 overflow-hidden" data-list-open="true" data-detail-open="true">
-        <aside className="panel flex min-h-0 min-w-0 flex-col gap-3 overflow-auto p-3">
+      <div
+        className="oc-workbench min-h-0 flex-1 overflow-hidden"
+        data-list-open={setupOpen}
+        data-detail-open={detailOpen}
+      >
+        <aside
+          className={`panel flex min-h-0 min-w-0 flex-col overflow-hidden${setupOpen ? '' : ' panel--collapsed'}`}
+          aria-hidden={!setupOpen}
+        >
+          <header className="panel-header flex shrink-0 items-center justify-between gap-2">
+            <h2 className="oc-panel__title">场景</h2>
+            <button
+              type="button"
+              className="oc-icon-btn oc-icon-btn--sm oc-panel-hide"
+              aria-label="隐藏场景配置"
+              onClick={() => setSetupOpen(false)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </header>
+          <div className="panel-body flex min-h-0 flex-col gap-3">
           <div className="oc-tabs oc-tabs--fill">
             <button
               type="button"
@@ -203,7 +358,7 @@ export default function TrainPage() {
 
           {mode === 'manual' ? (
             <>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-[13px]">
                 交易对
                 <input
                   className="oc-input-wrap"
@@ -211,7 +366,7 @@ export default function TrainPage() {
                   onChange={(e) => setSymbol(e.target.value)}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-[13px]">
                 开始
                 <input
                   type="datetime-local"
@@ -220,7 +375,7 @@ export default function TrainPage() {
                   onChange={(e) => setStartLocal(e.target.value)}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-[13px]">
                 结束
                 <input
                   type="datetime-local"
@@ -232,7 +387,7 @@ export default function TrainPage() {
             </>
           ) : (
             <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-xs">
+              <label className="flex items-center gap-2 text-[13px]">
                 <input
                   type="checkbox"
                   checked={randomFromPool}
@@ -251,17 +406,17 @@ export default function TrainPage() {
                   </button>
                   {showPool ? (
                     <textarea
-                      className="oc-input-wrap min-h-28 font-mono text-xs"
+                      className="oc-input-wrap min-h-28 font-mono text-[13px]"
                       value={poolText}
                       onChange={(e) => setPoolText(e.target.value)}
                       onBlur={() => saveTrainingPool(pool)}
                     />
                   ) : (
-                    <p className="text-xs opacity-70">池内 {pool.length} 个交易对</p>
+                    <p className="text-[13px] oc-text-faint">池内 {pool.length} 个交易对</p>
                   )}
                 </>
               ) : (
-                <label className="flex flex-col gap-1 text-xs">
+                <label className="flex flex-col gap-1 text-[13px]">
                   交易对
                   <input
                     className="oc-input-wrap"
@@ -271,7 +426,7 @@ export default function TrainPage() {
                   />
                 </label>
               )}
-              <label className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1 text-[13px]">
                 场景根数（{MIN_SCENARIO_BARS}–{MAX_SCENARIO_BARS}）
                 <input
                   type="number"
@@ -282,11 +437,11 @@ export default function TrainPage() {
                   onChange={(e) => setBarCount(Number(e.target.value) || 200)}
                 />
               </label>
-              <p className="text-xs opacity-60">时间窗口在历史内随机抽取</p>
+              <p className="text-[13px] oc-text-faint">时间窗口在历史内随机抽取</p>
             </div>
           )}
 
-          <label className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1 text-[13px]">
             周期
             <select
               className="oc-input-wrap"
@@ -301,7 +456,7 @@ export default function TrainPage() {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1 text-[13px]">
             上下文根数
             <input
               type="number"
@@ -313,7 +468,7 @@ export default function TrainPage() {
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1 text-[13px]">
             虚拟本金 (USDT)
             <input
               type="number"
@@ -322,7 +477,7 @@ export default function TrainPage() {
               onChange={(e) => setStartEquity(Number(e.target.value) || DEFAULT_START_EQUITY)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className="flex flex-col gap-1 text-[13px]">
             手续费 % / 边
             <input
               type="number"
@@ -336,52 +491,98 @@ export default function TrainPage() {
           <button type="button" className="oc-btn oc-btn--primary" disabled={loading} onClick={() => void onStart()}>
             {loading ? '加载中…' : run ? '开新局' : '开始训练'}
           </button>
-          {error ? <p className="text-xs text-[var(--oc-danger,#FF3B30)]">{error}</p> : null}
+          {error ? <p className="text-[13px] oc-text-loss">{error}</p> : null}
+          </div>
         </aside>
 
-        <section className="panel relative flex min-h-0 min-w-0 flex-col overflow-hidden p-2">
+        <section
+          className={`panel relative flex min-h-0 min-w-0 flex-col overflow-hidden${
+            setupOpen ? '' : ' pl-7'
+          }${detailOpen ? '' : ' pr-7'}`}
+        >
+          {!setupOpen ? (
+            <button
+              type="button"
+              className="oc-panel-rail oc-panel-rail--left"
+              aria-label="显示场景配置"
+              onClick={() => setSetupOpen(true)}
+            >
+              场景
+            </button>
+          ) : null}
+          {!detailOpen ? (
+            <button
+              type="button"
+              className="oc-panel-rail oc-panel-rail--right"
+              aria-label="显示本局面板"
+              onClick={() => setDetailOpen(true)}
+            >
+              本局
+            </button>
+          ) : null}
           {!run ? (
             <div className="oc-empty">
-              <p className="oc-empty__title">配置左侧场景后开始</p>
+              <p className="oc-empty__title">配置场景后开始</p>
               <p className="oc-empty__desc">未来 K 线默认遮罩；逐步回放并用模拟仓位练习</p>
             </div>
           ) : (
             <>
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+              <header className="panel-header flex shrink-0 flex-wrap items-center gap-2">
                 <span className="oc-chip">
                   {run.scenario.symbol} · {run.scenario.timeframe}
                 </span>
-                <span className="opacity-70">
-                  光标 {run.cursorIndex + 1}/{run.bars.length}
+                <span className="text-[13px] tabular-nums oc-text-faint">
+                  {run.cursorIndex + 1}/{run.bars.length}
                   {run.locked ? ' · 已结算' : run.revealed ? ' · 已揭晓' : ''}
                 </span>
-                <button type="button" className="oc-btn oc-btn--sm oc-btn--secondary" disabled={run.locked || run.cursorIndex >= run.bars.length - 1} onClick={step}>
-                  前进一步
-                </button>
-                <button
-                  type="button"
-                  className="oc-btn oc-btn--sm oc-btn--secondary"
-                  disabled={run.locked}
-                  onClick={() => setPlaying((p) => !p)}
-                >
-                  {playing ? '暂停' : '自动播放'}
-                </button>
-                <select
-                  className="oc-input-wrap w-auto"
-                  value={speed}
-                  onChange={(e) => setSpeed(Number(e.target.value) as 1 | 2 | 4)}
-                >
-                  <option value={1}>1×</option>
-                  <option value={2}>2×</option>
-                  <option value={4}>4×</option>
-                </select>
-                <button type="button" className="oc-btn oc-btn--sm oc-btn--secondary" disabled={run.locked} onClick={reveal}>
-                  揭晓
-                </button>
-                <button type="button" className="oc-btn oc-btn--sm oc-btn--ghost" onClick={reset}>
-                  重置
-                </button>
-              </div>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
+                    disabled={run.locked || run.cursorIndex >= run.bars.length - 1}
+                    onClick={step}
+                  >
+                    前进一步
+                  </button>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
+                    disabled={run.locked}
+                    onClick={() => setPlaying((p) => !p)}
+                  >
+                    {playing ? '暂停' : '自动播放'}
+                  </button>
+                  <select
+                    className="oc-input-wrap w-auto"
+                    aria-label="播放速度"
+                    value={speed}
+                    onChange={(e) => setSpeed(Number(e.target.value) as 1 | 2 | 4)}
+                  >
+                    <option value={1}>1×</option>
+                    <option value={2}>2×</option>
+                    <option value={4}>4×</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
+                    disabled={run.locked}
+                    onClick={reveal}
+                  >
+                    揭晓
+                  </button>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--ghost"
+                    disabled={loading}
+                    onClick={() => void onStart()}
+                  >
+                    {loading ? '加载中…' : '开新局'}
+                  </button>
+                  <button type="button" className="oc-btn oc-btn--sm oc-btn--ghost" onClick={reset}>
+                    重置
+                  </button>
+                </div>
+              </header>
               <TrainingChart
                 symbol={run.scenario.symbol}
                 timeframe={run.scenario.timeframe}
@@ -401,38 +602,109 @@ export default function TrainPage() {
           )}
         </section>
 
-        <aside className="panel flex min-h-0 min-w-0 flex-col gap-3 overflow-auto p-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide opacity-70">本局</h2>
-          {run ? (
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>权益 {run.account.equity.toFixed(2)}</div>
-              <div>可用 {free.toFixed(2)}</div>
-              <div>已实现 {run.stats.realizedPnl.toFixed(2)}</div>
-              <div>手续费 {run.stats.fees.toFixed(2)}</div>
-              <div>
-                战绩 {run.stats.wins}/{run.stats.trades}
-                {run.stats.trades ? ` (${((run.stats.wins / run.stats.trades) * 100).toFixed(0)}%)` : ''}
+        <aside
+          className={`panel flex min-h-0 min-w-0 flex-col overflow-hidden${detailOpen ? '' : ' panel--collapsed'}`}
+          aria-hidden={!detailOpen}
+        >
+          <header className="panel-header flex shrink-0 items-center justify-between gap-2">
+            <h2 className="oc-panel__title">本局</h2>
+            <button
+              type="button"
+              className="oc-icon-btn oc-icon-btn--sm oc-panel-hide"
+              aria-label="隐藏本局面板"
+              onClick={() => setDetailOpen(false)}
+            >
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </header>
+          <div className="panel-body min-h-0 flex-1 space-y-3">
+          {run?.liquidated ? (
+            <div className="space-y-2 text-[13px]">
+              <p className="text-[14px] font-medium oc-text-loss">本局以爆仓结束，权益归零。</p>
+              {postmortem ? (
+                <>
+                  <p>
+                    本局最大逆向 {pct(postmortem.adverseExcursion)}；
+                    {postmortem.maxSurvivableMargin != null && postmortem.maxSurvivableFraction != null
+                      ? `同样的入场，保证金最多投入 ${postmortem.maxSurvivableMargin.toFixed(0)} U（权益的 ${pct(postmortem.maxSurvivableFraction)}）才能活到最后，你投了 ${postmortem.usedMargin.toFixed(0)} U。`
+                      : `按这段行情，任何仓位规模都不会被强平，你投了 ${postmortem.usedMargin.toFixed(0)} U。`}
+                  </p>
+                  <p className="oc-text-faint">假设其他操作不变，仅按比例缩小仓位。</p>
+                </>
+              ) : null}
+              <div className="oc-stat-grid oc-stat-grid--cols-2">
+                <div className="oc-stat">
+                  <div className="oc-stat__label">已实现</div>
+                  <div className="oc-stat__value">{run.stats.realizedPnl.toFixed(2)}</div>
+                </div>
+                <div className="oc-stat">
+                  <div className="oc-stat__label">手续费</div>
+                  <div className="oc-stat__value">{run.stats.fees.toFixed(2)}</div>
+                </div>
               </div>
-              <div>标记价 {mark ? mark.toFixed(4) : '—'}</div>
+            </div>
+          ) : run ? (
+            <div className="oc-stat-grid oc-stat-grid--cols-2">
+              <div className="oc-stat">
+                <div className="oc-stat__label">权益</div>
+                <div className="oc-stat__value">{run.account.equity.toFixed(2)}</div>
+              </div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">可用</div>
+                <div className="oc-stat__value">{free.toFixed(2)}</div>
+              </div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">已实现</div>
+                <div className={`oc-stat__value ${run.stats.realizedPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}`}>
+                  {run.stats.realizedPnl.toFixed(2)}
+                </div>
+              </div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">手续费</div>
+                <div className="oc-stat__value">{run.stats.fees.toFixed(2)}</div>
+              </div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">战绩</div>
+                <div className="oc-stat__value">
+                  {run.stats.wins}/{run.stats.trades}
+                  {run.stats.trades
+                    ? ` · ${((run.stats.wins / run.stats.trades) * 100).toFixed(0)}%`
+                    : ''}
+                </div>
+              </div>
+              <div className="oc-stat">
+                <div className="oc-stat__label">标记价</div>
+                <div className="oc-stat__value">{mark ? mark.toFixed(4) : '—'}</div>
+              </div>
             </div>
           ) : (
-            <p className="text-xs opacity-60">未开局</p>
+            <p className="text-[13px] oc-text-faint">未开局</p>
           )}
 
-          <h2 className="text-xs font-semibold uppercase tracking-wide opacity-70">模拟仓位</h2>
-          {run?.position ? (
-            <div className="space-y-1 text-xs">
+          <h3 className="panel-card-title">模拟仓位</h3>
+          {!run ? (
+            <p className="text-[13px] oc-text-faint">开局后可下单</p>
+          ) : run.position ? (
+            <div className="space-y-2 text-[13px]">
               <div>
-                {run.position.direction === 'long' ? '多' : '空'}{' '}
-                {baseToUsdt(run.position.qty, run.position.entryPrice).toFixed(2)} U @{' '}
-                {run.position.entryPrice.toFixed(4)} · {run.position.leverage}x
+                {run.position.direction === 'long' ? '多' : '空'} @ {run.position.entryPrice.toFixed(4)}
               </div>
-              <div className="opacity-70">
-                约 {(run.position.qty).toPrecision(6)} 币 · 现价名义{' '}
-                {mark ? baseToUsdt(run.position.qty, mark).toFixed(2) : '—'} U
+              <div>
+                保证金 {usedMargin(run.position).toFixed(2)} U · 名义{' '}
+                {notionalOf(run.position, mark || run.position.entryPrice).toFixed(2)} U ·{' '}
+                {run.position.leverage}x · 强平价 {liqPrice != null ? liqPrice.toFixed(4) : '不会强平'}
               </div>
-              <div>占用保证金 {usedMargin(run.position).toFixed(2)} U</div>
-              <div className={uPnl >= 0 ? 'text-[var(--oc-up,#30D158)]' : 'text-[var(--oc-down,#FF3B30)]'}>
+              <div className="oc-text-faint">约 {run.position.qty.toPrecision(6)} 币</div>
+              <div
+                className={
+                  holdDistance != null && holdDistance < LIQ_WARN_DISTANCE
+                    ? 'oc-text-loss'
+                    : 'oc-text-faint'
+                }
+              >
+                {holdDistance != null ? `强平价距现价 ${pct(holdDistance, 2)}` : '该仓位不会被强平'}
+              </div>
+              <div className={uPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}>
                 浮盈 {uPnl.toFixed(2)}
               </div>
               <div className="flex gap-2">
@@ -460,39 +732,50 @@ export default function TrainPage() {
               >
                 更新止损止盈
               </button>
-              <label className="flex flex-col gap-1">
-                加仓金额 (USDT)
-                <input className="oc-input-wrap" value={usdtSize} onChange={(e) => setUsdtSize(e.target.value)} />
-              </label>
-              <button
-                type="button"
-                className="oc-btn oc-btn--sm oc-btn--secondary w-full"
-                disabled={run.locked}
-                onClick={() => {
-                  const err = add(Number(usdtSize));
-                  if (err) toast(err, 'error');
-                }}
-              >
-                加仓
-              </button>
-              <label className="flex flex-col gap-1">
-                平仓金额 USDT（空=全平）
-                <input className="oc-input-wrap" value={closeQty} onChange={(e) => setCloseQty(e.target.value)} />
-              </label>
-              <button
-                type="button"
-                className="oc-btn oc-btn--sm oc-btn--primary w-full"
-                disabled={run.locked}
-                onClick={() => {
-                  const err = close(closeQty.trim() ? Number(closeQty) : undefined);
-                  if (err) toast(err, 'error');
-                }}
-              >
-                平仓
-              </button>
+              {free > 0 ? (
+                <>
+                  <MarginSizer
+                    label={`加仓保证金（可用 ${free.toFixed(2)} U）`}
+                    fraction={marginFraction}
+                    onFraction={setMarginFraction}
+                    margin={orderMargin}
+                    notional={orderNotional}
+                  />
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary w-full"
+                    disabled={run.locked}
+                    onClick={() => {
+                      const err = add(orderMargin);
+                      if (err) toast(err, 'error');
+                    }}
+                  >
+                    加仓
+                  </button>
+                </>
+              ) : (
+                <p className="oc-text-faint">保证金已用尽，无法加仓</p>
+              )}
+              <div className="oc-text-faint">平仓比例</div>
+              <div className="flex gap-2">
+                {CLOSE_FRACTIONS.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`oc-btn oc-btn--sm flex-1 ${f === 1 ? 'oc-btn--primary' : 'oc-btn--secondary'}`}
+                    disabled={run.locked}
+                    onClick={() => {
+                      const err = close(f === 1 ? undefined : f);
+                      if (err) toast(err, 'error');
+                    }}
+                  >
+                    {f === 1 ? '全平' : `${Math.round(f * 100)}%`}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 text-xs">
+            <div className="flex flex-col gap-2 text-[13px]">
               <div className="oc-tabs oc-tabs--fill">
                 <button
                   type="button"
@@ -509,10 +792,13 @@ export default function TrainPage() {
                   空
                 </button>
               </div>
-              <label className="flex flex-col gap-1">
-                名义金额 (USDT)
-                <input className="oc-input-wrap" value={usdtSize} onChange={(e) => setUsdtSize(e.target.value)} />
-              </label>
+              <MarginSizer
+                label={`保证金（权益 ${free.toFixed(2)} U）`}
+                fraction={marginFraction}
+                onFraction={setMarginFraction}
+                margin={orderMargin}
+                notional={orderNotional}
+              />
               <label className="flex flex-col gap-1">
                 杠杆 1–{MAX_LEVERAGE}
                 <input
@@ -521,9 +807,17 @@ export default function TrainPage() {
                   max={MAX_LEVERAGE}
                   className="oc-input-wrap"
                   value={leverage}
-                  onChange={(e) => setLeverage(Number(e.target.value) || 1)}
+                  onChange={(e) => setLeverage(clampLeverage(Number(e.target.value) || 1))}
                 />
               </label>
+              <div className="flex flex-col gap-0.5">
+                {preview ? (
+                  <LiqReadout liq={preview.liq} distance={preview.distance} />
+                ) : (
+                  <div className="oc-text-faint">强平价 —</div>
+                )}
+                <span className="oc-text-faint">仓位越重，容错越小</span>
+              </div>
               <label className="flex flex-col gap-1">
                 止损（可选）
                 <input className="oc-input-wrap" value={sl} onChange={(e) => setSl(e.target.value)} />
@@ -542,6 +836,7 @@ export default function TrainPage() {
               </button>
             </div>
           )}
+          </div>
         </aside>
       </div>
     </div>

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchKlines, type Kline, type Timeframe } from '../services/api';
 import {
   AUTOPLAY_MS,
-  applyStopsOnBar,
+  applyBarExits,
+  buildPostmortem,
   canStep,
   emptyLedger,
   initialCursorIndex,
+  liquidationPrice,
+  replayExits,
   marketAdd,
   marketClose,
   marketOpen,
@@ -16,6 +19,7 @@ import {
   visibleBarsUntilTime,
   type Direction,
   type Ledger,
+  type SimPosition,
   type TrainingRun,
   type TrainingScenario,
   DEFAULT_CONTEXT_BARS,
@@ -71,6 +75,8 @@ function buildRun(
     position: null,
     revealed: false,
     locked: false,
+    liquidated: false,
+    postmortem: null,
     stats: ledger.stats,
     markers: [],
   };
@@ -130,28 +136,64 @@ export function useTrainingRun() {
 
   const stopAutoplay = useCallback(() => setPlaying(false), []);
 
-  const settleEnd = useCallback((current: TrainingRun): TrainingRun => {
-    let next = { ...current, revealed: true, locked: true };
-    if (next.position && next.bars.length > 0) {
-      const endBar = next.bars[next.bars.length - 1]!;
-      const r = marketClose(ledgerFromRun(next), endBar);
-      if (r.ok) next = applyLedger(next, r.value);
-    }
-    next.cursorIndex = Math.max(0, next.bars.length - 1);
-    return next;
-  }, []);
+  /** 爆仓 ends the run on the spot: unmask the rest and explain what size would have lived. */
+  const settleLiquidation = useCallback(
+    (current: TrainingRun, liquidatedPos: SimPosition, equityAtEntry: number): TrainingRun => {
+      // Entry fills at the opening bar's close, so that bar's own low is not yet
+      // adverse excursion; the exposure starts on the next bar.
+      const after = current.bars.filter((b) => b.time > liquidatedPos.openedAt);
+      return {
+        ...current,
+        revealed: true,
+        locked: true,
+        liquidated: true,
+        postmortem: buildPostmortem(liquidatedPos, equityAtEntry, after),
+        cursorIndex: Math.max(0, current.bars.length - 1),
+      };
+    },
+    [],
+  );
+
+  const settleEnd = useCallback(
+    (current: TrainingRun): TrainingRun => {
+      let next: TrainingRun = { ...current, revealed: true, locked: true };
+      // Replay the masked bars instead of jumping to the end: 揭晓 must not let an
+      // open position skip a stop it would have hit — or a 爆仓 it would have taken.
+      const replay = replayExits(ledgerFromRun(next), current.bars.slice(current.cursorIndex + 1));
+      next = applyLedger(next, replay.ledger);
+      if (replay.liquidation) {
+        return settleLiquidation(next, replay.liquidation.position, replay.liquidation.backingBalance);
+      }
+      if (next.position && next.bars.length > 0) {
+        const endBar = next.bars[next.bars.length - 1]!;
+        const r = marketClose(ledgerFromRun(next), endBar);
+        if (r.ok) next = applyLedger(next, r.value);
+      }
+      next.cursorIndex = Math.max(0, next.bars.length - 1);
+      return next;
+    },
+    [settleLiquidation],
+  );
 
   const step = useCallback(() => {
     setRun((prev) => {
       if (!prev || !canStep(prev.cursorIndex, prev.bars.length, prev.locked)) return prev;
       const nextIndex = prev.cursorIndex + 1;
       const bar = prev.bars[nextIndex]!;
+      const openPos = prev.position;
+      // Cross margin: equity is the untouched balance backing the position, which is
+      // exactly the B in the liquidation identity.
+      const backingBalance = prev.account.equity;
       let next: TrainingRun = { ...prev, cursorIndex: nextIndex };
-      next = applyLedger(next, applyStopsOnBar(ledgerFromRun(next), bar));
+      const exits = applyBarExits(ledgerFromRun(next), bar);
+      next = applyLedger(next, exits.ledger);
+      if (exits.liquidated && openPos) {
+        return settleLiquidation(next, openPos, backingBalance);
+      }
       if (nextIndex >= next.bars.length - 1) return settleEnd(next);
       return next;
     });
-  }, [settleEnd]);
+  }, [settleEnd, settleLiquidation]);
 
   // Stop autoplay when run ends / locks without setState-in-setState
   useEffect(() => {
@@ -301,6 +343,8 @@ export function useTrainingRun() {
         cursorIndex: prev.initialCursorIndex,
         revealed: false,
         locked: false,
+        liquidated: false,
+        postmortem: null,
         position: null,
         stats: ledger.stats,
         markers: [],
@@ -330,20 +374,21 @@ export function useTrainingRun() {
     return null;
   }, []);
 
-  /** usdtNotional: quote size (USDT), converted to base qty inside sim. */
+  /** marginUsdt: committed margin; leverage turns it into notional inside sim. */
   const open = useCallback(
-    (direction: Direction, usdtNotional: number, leverage: number, sl?: number | null, tp?: number | null) =>
-      applyOrder((_r, bar, ledger) => marketOpen(ledger, bar, direction, usdtNotional, leverage, sl, tp)),
+    (direction: Direction, marginUsdt: number, leverage: number, sl?: number | null, tp?: number | null) =>
+      applyOrder((_r, bar, ledger) => marketOpen(ledger, bar, direction, marginUsdt, leverage, sl, tp)),
     [applyOrder],
   );
 
   const add = useCallback(
-    (usdtNotional: number) => applyOrder((_r, bar, ledger) => marketAdd(ledger, bar, usdtNotional)),
+    (marginUsdt: number) => applyOrder((_r, bar, ledger) => marketAdd(ledger, bar, marginUsdt)),
     [applyOrder],
   );
 
+  /** fraction: share of the position to close (0–1]; omit for a full close. */
   const close = useCallback(
-    (usdtNotional?: number) => applyOrder((_r, bar, ledger) => marketClose(ledger, bar, usdtNotional)),
+    (fraction?: number) => applyOrder((_r, bar, ledger) => marketClose(ledger, bar, fraction)),
     [applyOrder],
   );
 
@@ -364,6 +409,11 @@ export function useTrainingRun() {
   }, [run]);
 
   const markPrice = run?.bars[run.cursorIndex]?.close ?? null;
+  /** Live 强平价 for the open position; null when flat or unliquidatable. */
+  const liqPrice = useMemo(
+    () => (run ? liquidationPrice(run.account, run.position) : null),
+    [run],
+  );
 
   const setCompareSymbol = useCallback(async (raw: string | null) => {
     const current = runRef.current;
@@ -442,5 +492,6 @@ export function useTrainingRun() {
     visibleMain,
     visibleCompare,
     markPrice,
+    liqPrice,
   };
 }
