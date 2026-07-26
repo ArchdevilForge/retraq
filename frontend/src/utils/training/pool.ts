@@ -11,11 +11,24 @@ export const DEFAULT_TRAINING_POOL = [
   'AVAX-USDT',
 ] as const;
 
+const QUOTE_SUFFIXES = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'BTC', 'ETH', 'BNB'] as const;
+
 export function normalizeSymbol(raw: string): string {
   const s = raw.trim().toUpperCase().replace(/[/_]/g, '-');
   if (!s) return '';
-  if (s.includes('-')) return s;
-  if (s.endsWith('USDT')) return `${s.slice(0, -4)}-USDT`;
+  // match backend normalize_symbol: keep base-quote, drop extra segments (BTC-USDT-SWAP → BTC-USDT)
+  if (s.includes('-')) {
+    const parts = s.split('-').filter(Boolean);
+    return parts.length >= 2 ? `${parts[0]}-${parts[1]}` : '';
+  }
+  // Same quote list as backend symbol_utils._QUOTE_SUFFIXES, so BTCUSDC splits as
+  // BTC-USDC rather than becoming BTCUSDC-USDT.
+  for (const quote of QUOTE_SUFFIXES) {
+    if (s.endsWith(quote) && s.length > quote.length) {
+      return `${s.slice(0, -quote.length)}-${quote}`;
+    }
+  }
+  // Bare token: the pool is hand-typed, so 'btc' is meant as the USDT pair.
   return `${s}-USDT`;
 }
 

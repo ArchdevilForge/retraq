@@ -9,6 +9,8 @@ type DatasetContextValue = {
   tradesRevision: number;
   notifyTradesChanged: () => void;
   loading: boolean;
+  /** Non-null when the dataset list could not be loaded (distinct from "no datasets yet"). */
+  error: string | null;
 };
 
 const DatasetContext = createContext<DatasetContextValue | null>(null);
@@ -21,13 +23,21 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   });
   const [tradesRevision, setTradesRevision] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const notifyTradesChanged = useCallback(() => {
     setTradesRevision((n) => n + 1);
   }, []);
 
   const refreshDatasets = useCallback(async () => {
-    const { data } = await fetchDatasets();
+    let data: Dataset[];
+    try {
+      ({ data } = await fetchDatasets());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+    setError(null);
     setDatasets(data);
     if (data.length === 0) {
       setActiveDatasetIdState(null);
@@ -62,8 +72,18 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
       tradesRevision,
       notifyTradesChanged,
       loading,
+      error,
     }),
-    [datasets, activeDatasetId, setActiveDatasetId, refreshDatasets, tradesRevision, notifyTradesChanged, loading],
+    [
+      datasets,
+      activeDatasetId,
+      setActiveDatasetId,
+      refreshDatasets,
+      tradesRevision,
+      notifyTradesChanged,
+      loading,
+      error,
+    ],
   );
 
   return <DatasetContext.Provider value={value}>{children}</DatasetContext.Provider>;

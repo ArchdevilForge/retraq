@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import AnalysisInsights from '../components/AnalysisInsights';
 import EmptyDataset from '../components/EmptyDataset';
 import { useDataset } from '../context/DatasetContext';
-import { fetchTrades } from '../services/api';
+import { fetchTradesWithTotal } from '../services/api';
 import type { Trade } from '../services/api';
 import { fmtMoney, fmtPct } from '../utils/format';
 import {
@@ -11,12 +11,16 @@ import {
   analyzeBehavior,
   analyzeRisk,
   analyzeSymbols,
+  localDateKey,
   type TimeAnalysis,
 } from '../utils/tradeAnalysis';
 
 type TabId = 'overview' | 'behavior' | 'time' | 'risk';
 
 const TAB_IDS: TabId[] = ['overview', 'behavior', 'time', 'risk'];
+
+const PAGE_LIMIT = 2000;
+const MAX_PAGES = 5;
 
 function isTabId(v: string | null): v is TabId {
   return v != null && TAB_IDS.includes(v as TabId);
@@ -48,7 +52,7 @@ function useCoreAnalysis(trades: Trade[]) {
       winRate != null && avgWin != null && avgLoss != null ? winRate * avgWin + (1 - winRate) * avgLoss : null;
 
     const sorted = [...rows].sort((a, b) => a.entry_time - b.entry_time);
-    let peak = -Infinity;
+    let peak = 0; // anchored at starting equity
     let maxDd = 0;
     let cum = 0;
     sorted.forEach((t) => {
@@ -57,10 +61,9 @@ function useCoreAnalysis(trades: Trade[]) {
       maxDd = Math.min(maxDd, cum - peak);
     });
 
-    const days = new Set<number>();
+    const days = new Set<string>();
     rows.forEach((t) => {
-      const d = new Date(t.entry_time);
-      days.add(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      days.add(localDateKey(t.entry_time));
     });
 
     return {
@@ -106,19 +109,38 @@ export default function AnalysisPage() {
   const tab: TabId = isTabId(tabParam) ? tabParam : 'overview';
   const setTab = (next: TabId) => setSearchParams({ tab: next }, { replace: true });
 
-  const { activeDatasetId, tradesRevision, loading: datasetsLoading } = useDataset();
+  const {
+    activeDatasetId,
+    tradesRevision,
+    loading: datasetsLoading,
+    error: datasetsError,
+  } = useDataset();
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeDatasetId == null) return;
+    // The paged fetch spans several requests; drop its result if the dataset changed.
+    let ignore = false;
     setLoading(true);
     setError(null);
-    fetchTrades(undefined, { limit: 2000, maxPages: 5 })
-      .then(setTrades)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    fetchTradesWithTotal(undefined, { limit: PAGE_LIMIT, maxPages: MAX_PAGES })
+      .then((res) => {
+        if (ignore) return;
+        setTrades(res.trades);
+        setTotal(res.total);
+      })
+      .catch((err) => {
+        if (!ignore) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [activeDatasetId, tradesRevision]);
 
   const core = useCoreAnalysis(trades);
@@ -136,6 +158,7 @@ export default function AnalysisPage() {
     [trades],
   );
 
+  const truncated = total > trades.length;
   const pnlTone = core.totalPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss';
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: '总览' },
@@ -149,6 +172,15 @@ export default function AnalysisPage() {
       <div className="flex flex-1 items-center justify-center">
         <span className="oc-spinner oc-spinner--md" aria-label="加载中…" />
       </div>
+    );
+  }
+
+  if (datasetsError) {
+    return (
+      <EmptyDataset
+        title="表格列表加载失败"
+        steps={[datasetsError, '确认后端已启动，然后刷新页面重试']}
+      />
     );
   }
 
@@ -179,6 +211,11 @@ export default function AnalysisPage() {
           <p className="mt-1 text-[13px] oc-text-faint">
             {core.totalTrades} 笔样本 · 累计 {fmtMoney(core.totalPnl)} U
           </p>
+          {truncated && (
+            <p className="mt-1 text-[12px] oc-text-faint">
+              共 {total} 笔，仅统计最近 {trades.length} 笔交易，更早的记录未纳入本页分析。
+            </p>
+          )}
         </header>
 
         <AnalysisInsights

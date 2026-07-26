@@ -28,15 +28,14 @@ class TradeAnalyzer:
         ]
 
         if not trades:
-            dist = self.symbol_distribution(db, dataset_id)
             return {
                 "total_pnl": 0,
                 "win_rate": 0,
                 "profit_factor": 0,
                 "max_drawdown": 0,
                 "avg_holding_time": 0,
-                "symbol_distribution": dist,
-                "trade_count": sum(dist.values()),
+                "symbol_distribution": self.symbol_distribution(db, dataset_id),
+                "trade_count": 0,
             }
 
         # Total PnL
@@ -50,7 +49,8 @@ class TradeAnalyzer:
         total_profit = sum(t.profit for t in wins) if wins else 0
         losses = [t for t in trades if t.profit < 0]
         total_loss = abs(sum(t.profit for t in losses)) if losses else 0
-        profit_factor = total_profit / total_loss if total_loss > 0 else total_profit
+        # Undefined without losses; an amount here would be read as a ratio.
+        profit_factor = total_profit / total_loss if total_loss > 0 else None
 
         # Max drawdown
         cumulative: list[float] = []
@@ -59,7 +59,7 @@ class TradeAnalyzer:
             running += float(t.profit)
             cumulative.append(running)
 
-        peak = cumulative[0]
+        peak = 0.0
         max_drawdown = 0.0
         for val in cumulative:
             if val > peak:
@@ -81,12 +81,12 @@ class TradeAnalyzer:
         return {
             "total_pnl": round(total_pnl, 2),
             "win_rate": round(win_rate * 100, 2),
-            "profit_factor": round(profit_factor, 2),
+            "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
             "max_drawdown": round(max_drawdown, 2),
             "avg_holding_time": round(avg_holding_hours, 2),
             "symbol_distribution": symbol_dist,
-            # same basis as empty path / symbol chips: valid symbols only
-            "trade_count": sum(symbol_dist.values()),
+            # same basis as win_rate / profit_factor: closed trades with a valid symbol
+            "trade_count": len(trades),
         }
 
 

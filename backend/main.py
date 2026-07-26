@@ -1,7 +1,10 @@
 import os
 import tempfile
+import zipfile
 from typing import Optional
 
+import ccxt
+import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -83,7 +86,7 @@ def get_klines(
     timeframe: str,
     response: Response,
     nocache: bool = Query(False, description="Disable server-side cache"),
-    limit: int = 500,
+    limit: int = Query(500, ge=1, le=1000),
     start: Optional[int] = Query(None, description="Start timestamp (ms)"),
     end: Optional[int] = Query(None, description="End timestamp (ms)"),
     db: Session = Depends(get_db),
@@ -108,6 +111,10 @@ def get_klines(
         return {"symbol": symbol, "timeframe": timeframe, "data": data}
     except HTTPException:
         raise
+    except ccxt.BadSymbol:
+        # 400 (not 404) so a client can tell "this symbol will never work" apart from
+        # "this particular range holds no candles", which is the 404 above.
+        raise HTTPException(400, f"Unknown symbol: {symbol}")
     except Exception as e:
         print(f"get_klines failed symbol={symbol} tf={timeframe} start={start} end={end}: {e!r}")
         raise HTTPException(502, f"Failed to fetch klines: {type(e).__name__}")
@@ -131,8 +138,9 @@ def _find_or_create_dataset(db: Session, name: str) -> Dataset:
         return d
     d = Dataset(name=name)
     db.add(d)
-    db.commit()
-    db.refresh(d)
+    # flush (not commit): the caller owns the transaction, so a failed import
+    # rolls the new dataset back instead of leaving an empty phantom behind.
+    db.flush()
     return d
 
 
@@ -151,18 +159,13 @@ async def import_trades(
     if not file.filename:
         raise HTTPException(400, "Missing filename")
     fn = file.filename.lower()
-    if not fn.endswith((".xlsx", ".xls", ".csv")):
-        raise HTTPException(400, "Only .xlsx, .xls, .csv are supported")
+    if fn.endswith(".xls"):
+        # Every reader here is pinned to openpyxl, which only speaks .xlsx.
+        raise HTTPException(400, "不支持旧版 .xls，请用 Excel 另存为 .xlsx 后再导入")
+    if not fn.endswith((".xlsx", ".csv")):
+        raise HTTPException(400, "Only .xlsx, .csv are supported")
 
     ds_name = (label.strip() if label and label.strip() else _dataset_label_from_filename(file.filename))
-    dataset = _find_or_create_dataset(db, ds_name)
-    dataset_id = dataset.id
-
-    if replace:
-        db.query(TradeFill).filter(TradeFill.dataset_id == dataset_id).delete()
-        db.query(Trade).filter(Trade.dataset_id == dataset_id).delete()
-        db.commit()
-
     suffix = ".csv" if fn.endswith(".csv") else ".xlsx"
     tmp_path = ""
     try:
@@ -171,15 +174,38 @@ async def import_trades(
             tmp.write(content)
             tmp_path = tmp.name
         resolved = detect_template(tmp_path) if template == "auto" else template
-        result = trade_importer.parse_file(db, tmp_path, int(dataset_id), resolved)
+
+        # One transaction for the whole import: the replace-delete, the new dataset
+        # and the parsed rows commit together, so a parse failure anywhere leaves the
+        # user's existing data untouched.
+        dataset = _find_or_create_dataset(db, ds_name)
+        dataset_id = int(dataset.id)
+        dataset_name = str(dataset.name)
+        if replace:
+            db.query(TradeFill).filter(TradeFill.dataset_id == dataset_id).delete()
+            db.query(Trade).filter(Trade.dataset_id == dataset_id).delete()
+
+        result = trade_importer.parse_file(db, tmp_path, dataset_id, resolved)
+        if not result.get("success"):
+            # A recognised sheet that yields nothing must not be able to wipe a dataset.
+            raise HTTPException(400, "未识别到任何可导入的交易，已保留原有数据")
+        db.commit()
         result["template"] = resolved
         result["dataset_id"] = dataset_id
-        result["dataset_name"] = dataset.name
+        result["dataset_name"] = dataset_name
         result["replaced"] = replace
         return result
+    except HTTPException:
+        db.rollback()
+        raise
     except ValueError as e:
+        db.rollback()
         raise HTTPException(400, str(e))
+    except (zipfile.BadZipFile, pd.errors.ParserError) as e:
+        db.rollback()
+        raise HTTPException(400, f"文件无法解析，请确认是完整的 .xlsx / .csv 表格（{type(e).__name__}）")
     except Exception as e:
+        db.rollback()
         raise HTTPException(500, str(e))
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -292,6 +318,24 @@ def get_stats_overview(request: Request, db: Session = Depends(get_db)):
 
 _static_dir = os.getenv("RETRAQ_STATIC_DIR")
 if _static_dir and os.path.isdir(_static_dir):
+    from fastapi.responses import FileResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
+    from starlette.exceptions import HTTPException as StarletteHTTPException
 
+    _index_html = os.path.join(_static_dir, "index.html")
+
+    @app.exception_handler(404)
+    async def spa_fallback(request: Request, exc: StarletteHTTPException) -> Response:
+        """SPA deep links (/replay, /analysis, …) have no file; the router resolves them client-side."""
+        if request.url.path.startswith("/api") or request.method not in ("GET", "HEAD"):
+            return JSONResponse({"detail": exc.detail}, status_code=404)
+        if not os.path.isfile(_index_html):
+            return JSONResponse({"detail": exc.detail}, status_code=404)
+        # Only navigations fall back; a missing asset must stay a 404 so a broken
+        # build fails loudly instead of serving HTML as JS.
+        if os.path.splitext(request.url.path)[1]:
+            return JSONResponse({"detail": exc.detail}, status_code=404)
+        return FileResponse(_index_html)
+
+    # Real assets stay with StaticFiles; only its 404s reach the fallback above.
     app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")

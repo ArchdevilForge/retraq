@@ -7,7 +7,7 @@ import { useDataset } from '../context/DatasetContext';
 import type { Trade } from '../services/api';
 
 export default function ReplayPage() {
-  const { activeDatasetId, loading: datasetsLoading } = useDataset();
+  const { activeDatasetId, loading: datasetsLoading, error: datasetsError } = useDataset();
   const [symbol, setSymbol] = useState('');
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [listOpen, setListOpen] = useState(true);
@@ -28,6 +28,15 @@ export default function ReplayPage() {
       <div className="flex flex-1 items-center justify-center">
         <span className="oc-spinner oc-spinner--md" aria-label="加载中…" />
       </div>
+    );
+  }
+
+  if (datasetsError) {
+    return (
+      <EmptyDataset
+        title="表格列表加载失败"
+        steps={[datasetsError, '确认后端已启动，然后刷新页面重试']}
+      />
     );
   }
 

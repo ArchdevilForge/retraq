@@ -9,6 +9,7 @@ export interface TimeAnalysis {
   hourlyStats: Array<{
     hour: number;
     trades: number;
+    classifiedTrades: number; // wins + losses, the winRate denominator
     winRate: number;
     totalPnl: number;
     avgPnl: number;
@@ -18,6 +19,7 @@ export interface TimeAnalysis {
     day: number;
     dayName: string;
     trades: number;
+    classifiedTrades: number;
     winRate: number;
     totalPnl: number;
   }>;
@@ -109,6 +111,7 @@ export interface SymbolAnalysis {
   symbolStats: Array<{
     symbol: string;
     trades: number;
+    classifiedTrades: number;
     winRate: number;
     totalPnl: number;
     avgPnl: number;
@@ -137,52 +140,56 @@ const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五
 export function analyzeTimePatterns(trades: Trade[]): TimeAnalysis {
   const profitTrades = trades.filter((t) => typeof t.profit === 'number' && t.exit_time != null);
 
-  // Hourly stats
-  const hourlyMap = new Map<number, { wins: number; losses: number; pnl: number }>();
+  // Hourly stats (breakeven trades count toward neither wins nor losses)
+  const hourlyMap = new Map<number, { count: number; wins: number; losses: number; pnl: number }>();
   for (let h = 0; h < 24; h++) {
-    hourlyMap.set(h, { wins: 0, losses: 0, pnl: 0 });
+    hourlyMap.set(h, { count: 0, wins: 0, losses: 0, pnl: 0 });
   }
 
   profitTrades.forEach((t) => {
     const hour = new Date(t.entry_time).getHours();
     const stats = hourlyMap.get(hour)!;
+    stats.count++;
     stats.pnl += t.profit!;
     if (t.profit! > 0) stats.wins++;
-    else stats.losses++;
+    else if (t.profit! < 0) stats.losses++;
   });
 
   const hourlyStats = Array.from(hourlyMap.entries()).map(([hour, stats]) => {
-    const total = stats.wins + stats.losses;
+    const classified = stats.wins + stats.losses;
     return {
       hour,
-      trades: total,
-      winRate: total > 0 ? stats.wins / total : 0,
+      trades: stats.count,
+      classifiedTrades: classified,
+      winRate: classified > 0 ? stats.wins / classified : 0,
       totalPnl: stats.pnl,
-      avgPnl: total > 0 ? stats.pnl / total : 0,
+      avgPnl: stats.count > 0 ? stats.pnl / stats.count : 0,
     };
   });
 
   // Weekday stats
-  const weekdayMap = new Map<number, { wins: number; losses: number; pnl: number }>();
+  const weekdayMap = new Map<number, { count: number; wins: number; losses: number; pnl: number }>();
   for (let d = 0; d < 7; d++) {
-    weekdayMap.set(d, { wins: 0, losses: 0, pnl: 0 });
+    weekdayMap.set(d, { count: 0, wins: 0, losses: 0, pnl: 0 });
   }
 
   profitTrades.forEach((t) => {
     const day = new Date(t.entry_time).getDay();
     const stats = weekdayMap.get(day)!;
+    stats.count++;
     stats.pnl += t.profit!;
     if (t.profit! > 0) stats.wins++;
-    else stats.losses++;
+    else if (t.profit! < 0) stats.losses++;
   });
 
   const weekdayStats = Array.from(weekdayMap.entries()).map(([day, stats]) => {
-    const total = stats.wins + stats.losses;
+    const classified = stats.wins + stats.losses;
     return {
       day,
       dayName: WEEKDAY_NAMES[day],
-      trades: total,
-      winRate: total > 0 ? stats.wins / total : 0,
+      trades: stats.count,
+      classifiedTrades: classified,
+      winRate: classified > 0 ? stats.wins / classified : 0,
       totalPnl: stats.pnl,
     };
   });
@@ -190,7 +197,7 @@ export function analyzeTimePatterns(trades: Trade[]): TimeAnalysis {
   // Daily PnL for heatmap
   const dailyMap = new Map<string, { pnl: number; trades: number }>();
   profitTrades.forEach((t) => {
-    const date = new Date(t.entry_time).toISOString().split('T')[0];
+    const date = localDateKey(t.entry_time);
     const existing = dailyMap.get(date) || { pnl: 0, trades: 0 };
     existing.pnl += t.profit!;
     existing.trades++;
@@ -233,11 +240,11 @@ export function analyzeTimePatterns(trades: Trade[]): TimeAnalysis {
   }
 
   // Best/worst periods
-  const activeHours = hourlyStats.filter((h) => h.trades >= 3);
+  const activeHours = hourlyStats.filter((h) => h.classifiedTrades >= 3);
   const bestHour = activeHours.length > 0 ? activeHours.reduce((best, curr) => (curr.winRate > best.winRate ? curr : best)).hour : null;
   const worstHour = activeHours.length > 0 ? activeHours.reduce((worst, curr) => (curr.winRate < worst.winRate ? curr : worst)).hour : null;
 
-  const activeWeekdays = weekdayStats.filter((w) => w.trades >= 3);
+  const activeWeekdays = weekdayStats.filter((w) => w.classifiedTrades >= 3);
   const bestWeekday = activeWeekdays.length > 0 ? activeWeekdays.reduce((best, curr) => (curr.winRate > best.winRate ? curr : best)).dayName : null;
   const worstWeekday = activeWeekdays.length > 0 ? activeWeekdays.reduce((worst, curr) => (curr.winRate < worst.winRate ? curr : worst)).dayName : null;
 
@@ -291,7 +298,7 @@ export function analyzeBehavior(trades: Trade[]): BehaviorAnalysis {
   // Overtrading detection
   const dailyTradeCount = new Map<string, { count: number; pnl: number }>();
   profitTrades.forEach((t) => {
-    const date = new Date(t.entry_time).toISOString().split('T')[0];
+    const date = localDateKey(t.entry_time);
     const existing = dailyTradeCount.get(date) || { count: 0, pnl: 0 };
     existing.count++;
     existing.pnl += t.profit!;
@@ -388,7 +395,7 @@ export function analyzeRisk(trades: Trade[]): RiskAnalysis {
       currentWinStreak++;
       currentLossStreak = 0;
       maxConsecutiveWins = Math.max(maxConsecutiveWins, currentWinStreak);
-    } else {
+    } else if (t.profit! < 0) {
       currentLossStreak++;
       currentWinStreak = 0;
       maxConsecutiveLosses = Math.max(maxConsecutiveLosses, currentLossStreak);
@@ -413,7 +420,7 @@ export function analyzeRisk(trades: Trade[]): RiskAnalysis {
 
   // PnL distribution
   const sortedProfits = [...profits].sort((a, b) => a - b);
-  const median = sortedProfits.length > 0 ? sortedProfits[Math.floor(sortedProfits.length / 2)] : 0;
+  const median = calculateMedian(sortedProfits);
 
   // Calculate skewness
   const n = profits.length;
@@ -503,34 +510,36 @@ export function analyzeSymbols(trades: Trade[]): SymbolAnalysis {
   const profitTrades = trades.filter((t) => typeof t.profit === 'number');
 
   // Symbol stats
-  const symbolMap = new Map<string, { wins: number; losses: number; pnl: number; winPnl: number; lossPnl: number }>();
+  const symbolMap = new Map<string, { count: number; wins: number; losses: number; pnl: number; winPnl: number; lossPnl: number }>();
 
   profitTrades.forEach((t) => {
-    const existing = symbolMap.get(t.symbol) || { wins: 0, losses: 0, pnl: 0, winPnl: 0, lossPnl: 0 };
+    const existing = symbolMap.get(t.symbol) || { count: 0, wins: 0, losses: 0, pnl: 0, winPnl: 0, lossPnl: 0 };
+    existing.count++;
     existing.pnl += t.profit!;
     if (t.profit! > 0) {
       existing.wins++;
       existing.winPnl += t.profit!;
-    } else {
+    } else if (t.profit! < 0) {
       existing.losses++;
       existing.lossPnl += Math.abs(t.profit!);
     }
     symbolMap.set(t.symbol, existing);
   });
 
-  const overallWinRate = profitTrades.length > 0 ? profitTrades.filter((t) => t.profit! > 0).length / profitTrades.length : 0;
+  const overallWinRate = winRateOf(profitTrades);
 
   const symbolStats = Array.from(symbolMap.entries())
     .map(([symbol, stats]) => {
-      const total = stats.wins + stats.losses;
-      const winRate = total > 0 ? stats.wins / total : 0;
+      const classified = stats.wins + stats.losses;
+      const winRate = classified > 0 ? stats.wins / classified : 0;
       const profitFactor = stats.lossPnl > 0 ? stats.winPnl / stats.lossPnl : stats.winPnl > 0 ? Infinity : 0;
       return {
         symbol,
-        trades: total,
+        trades: stats.count,
+        classifiedTrades: classified,
         winRate,
         totalPnl: stats.pnl,
-        avgPnl: total > 0 ? stats.pnl / total : 0,
+        avgPnl: stats.count > 0 ? stats.pnl / stats.count : 0,
         profitFactor,
         isStrength: winRate > overallWinRate,
       };
@@ -541,15 +550,12 @@ export function analyzeSymbols(trades: Trade[]): SymbolAnalysis {
   const longTrades = profitTrades.filter((t) => t.direction.toLowerCase() === 'long');
   const shortTrades = profitTrades.filter((t) => t.direction.toLowerCase() === 'short');
 
-  const longWins = longTrades.filter((t) => t.profit! > 0).length;
-  const shortWins = shortTrades.filter((t) => t.profit! > 0).length;
-
   const directionStats = {
     longTrades: longTrades.length,
-    longWinRate: longTrades.length > 0 ? longWins / longTrades.length : 0,
+    longWinRate: winRateOf(longTrades),
     longPnl: longTrades.reduce((sum, t) => sum + t.profit!, 0),
     shortTrades: shortTrades.length,
-    shortWinRate: shortTrades.length > 0 ? shortWins / shortTrades.length : 0,
+    shortWinRate: winRateOf(shortTrades),
     shortPnl: shortTrades.reduce((sum, t) => sum + t.profit!, 0),
     betterDirection: 'equal' as 'long' | 'short' | 'equal',
   };
@@ -560,8 +566,8 @@ export function analyzeSymbols(trades: Trade[]): SymbolAnalysis {
     directionStats.betterDirection = 'short';
   }
 
-  // Best/worst symbols (min 3 trades)
-  const qualifiedSymbols = symbolStats.filter((s) => s.trades >= 3);
+  // Best/worst symbols (min 3 classified trades)
+  const qualifiedSymbols = symbolStats.filter((s) => s.classifiedTrades >= 3);
   const bestSymbols = qualifiedSymbols.filter((s) => s.isStrength).slice(0, 3).map((s) => s.symbol);
   const worstSymbols = qualifiedSymbols.filter((s) => !s.isStrength).slice(-3).reverse().map((s) => s.symbol);
 
@@ -576,6 +582,27 @@ export function analyzeSymbols(trades: Trade[]): SymbolAnalysis {
 // ============================================
 // Helper Functions
 // ============================================
+
+// Local calendar day key ('YYYY-MM-DD'), matching the local getHours/getDay buckets
+export function localDateKey(ms: number): string {
+  const d = new Date(ms);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+// Win rate over classified trades only; breakeven (profit === 0) counts as neither
+function winRateOf(trades: Trade[]): number {
+  const wins = trades.filter((t) => t.profit! > 0).length;
+  const losses = trades.filter((t) => t.profit! < 0).length;
+  return wins + losses > 0 ? wins / (wins + losses) : 0;
+}
+
+function calculateMedian(sorted: number[]): number {
+  if (sorted.length === 0) return 0;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
 
 function calculateStdDev(values: number[]): number {
   if (values.length === 0) return 0;
@@ -596,10 +623,10 @@ function createDistributionBuckets(profits: number[]): Array<{ range: string; co
 
   const sorted = [...profits].sort((a, b) => a - b);
   const n = sorted.length;
-  const median = sorted[Math.floor(n / 2)];
+  const median = calculateMedian(sorted);
 
   const deviations = sorted.map((v) => Math.abs(v - median)).sort((a, b) => a - b);
-  const mad = deviations[Math.floor(n / 2)];
+  const mad = calculateMedian(deviations);
   const min = sorted[0];
   const max = sorted[n - 1];
   const range = max - min;
@@ -625,13 +652,16 @@ function createDistributionBuckets(profits: number[]): Array<{ range: string; co
     positiveBounds.push(acc);
   }
 
-  const bounds = [
-    min,
-    ...negativeBounds.reverse(),
-    median,
-    ...positiveBounds,
-    max,
-  ].filter((v, idx, arr) => idx === 0 || v > arr[idx - 1]);
+  // Clamp into [min, max] then keep a strictly ascending run. Comparing against the
+  // previous *kept* bound matters: filtering against the source array lets a smaller
+  // value follow a dropped one and emit a descending bucket like "-100 ~ -926".
+  const bounds = [min, ...negativeBounds.reverse(), median, ...positiveBounds, max]
+    .map((v) => Math.min(max, Math.max(min, v)))
+    .sort((a, b) => a - b)
+    .reduce<number[]>((kept, v) => {
+      if (kept.length === 0 || v > kept[kept.length - 1]) kept.push(v);
+      return kept;
+    }, []);
 
   const buckets: Array<{ range: string; count: number; percentage: number }> = [];
   for (let i = 0; i < bounds.length - 1; i++) {

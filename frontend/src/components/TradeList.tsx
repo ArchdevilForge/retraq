@@ -13,6 +13,13 @@ interface Props {
 
 const ALL = '';
 
+/** 传输层失败（fetch 抛 TypeError，没有 HTTP 状态）不该把英文原文塞进中文提示。 */
+function describeApiError(err: unknown): string {
+  if (err instanceof TypeError) return '无法连接后端服务，请确认后端已启动';
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 const TradeRow = memo(function TradeRow({
   trade,
   selected,
@@ -62,10 +69,12 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
   const { activeDatasetId, tradesRevision } = useDataset();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [stats, setStats] = useState<SymbolStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [symbolFilter, setSymbolFilter] = useState(ALL);
   const [pairSearch, setPairSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeDatasetId == null) return;
@@ -78,19 +87,44 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
 
   useEffect(() => {
     if (activeDatasetId == null) return;
+    let ignore = false;
+    setStatsError(null);
     fetchSymbolStats()
-      .then(setStats)
-      .catch(console.error);
+      .then((data) => {
+        if (!ignore) setStats(data);
+      })
+      .catch((err: unknown) => {
+        console.error(err);
+        if (ignore) return;
+        setStats(null);
+        setStatsError(describeApiError(err));
+      });
+    return () => {
+      ignore = true;
+    };
   }, [activeDatasetId, tradesRevision]);
 
   useEffect(() => {
     if (activeDatasetId == null) return;
+    let ignore = false;
     setLoading(true);
+    setError(null);
     const sym = symbolFilter || undefined;
     fetchTrades(sym ? { symbol: sym } : undefined)
-      .then(setTrades)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (!ignore) setTrades(data);
+      })
+      .catch((err: unknown) => {
+        if (ignore) return;
+        setTrades([]);
+        setError(describeApiError(err));
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [activeDatasetId, symbolFilter, tradesRevision]);
 
   const symbolChips = useMemo(() => {
@@ -198,6 +232,12 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
             </button>
           ))}
         </div>
+
+        {statsError ? (
+          <p className="text-[12px] oc-text-loss" role="alert">
+            交易对统计加载失败：{statsError}
+          </p>
+        ) : null}
       </header>
 
       <div className="panel-body min-h-0 flex-1 space-y-0.5 overflow-y-auto">
@@ -205,6 +245,10 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
           [...Array(6)].map((_, i) => (
             <div key={i} className="h-12 oc-skeleton" />
           ))
+        ) : error ? (
+          <p className="px-2 py-8 text-center text-[13px] oc-text-loss" role="alert">
+            交易加载失败：{error}
+          </p>
         ) : trades.length === 0 ? (
           <p className="px-2 py-8 text-center text-[13px] oc-text-faint">该数据集暂无交易，请导入表格</p>
         ) : (

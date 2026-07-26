@@ -1,4 +1,5 @@
 import os
+import time
 
 import ccxt
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -18,15 +19,38 @@ TIMEFRAME_MS = {
 class KlineService:
     def __init__(self):
         self.exchanges: list[object] = []
+        # Journals are U-margined perps, so default to swap markets, not spot.
         exchange_ids = os.getenv("KLINE_EXCHANGES", "okx,binance")
         for exchange_id in [x.strip() for x in exchange_ids.split(",") if x.strip()]:
             exchange_factory = getattr(ccxt, exchange_id, None)
             if exchange_factory is None:
                 continue
             try:
-                self.exchanges.append(exchange_factory({"enableRateLimit": True}))
+                self.exchanges.append(
+                    exchange_factory({"enableRateLimit": True, "options": {"defaultType": "swap"}})
+                )
             except Exception:
                 continue
+        # Historical gaps every exchange refused once; re-asking on each request never converges.
+        self._empty_gaps: set[tuple[str, str, int, int]] = set()
+
+    def _ccxt_symbols(self, symbol: str) -> list[str]:
+        """Linear-swap form first (BASE/QUOTE:QUOTE), plain spot form as fallback."""
+        base, sep, quote = symbol.partition("-")
+        if not sep or not base or not quote:
+            return [symbol.replace("-", "/")]
+        return [f"{base}/{quote}:{quote}", f"{base}/{quote}"]
+
+    def _fetch_ohlcv(
+        self, exchange, symbol: str, timeframe: str, since: int | None = None, limit: int | None = None
+    ) -> list[list]:
+        last_exc: Exception | None = None
+        for ccxt_symbol in self._ccxt_symbols(symbol):
+            try:
+                return exchange.fetch_ohlcv(ccxt_symbol, timeframe, since=since, limit=limit)
+            except ccxt.BadSymbol as exc:
+                last_exc = exc
+        raise last_exc or RuntimeError("Failed to fetch klines")
 
     def fetch_klines(
         self, db: Session, symbol: str, timeframe: str, limit: int = 500
@@ -107,19 +131,21 @@ class KlineService:
         start_ts: int,
         end_ts: int,
         step_ms: int,
-    ) -> None:
-        ccxt_symbol = symbol.replace("-", "/")
+    ) -> bool:
+        """Returns whether the exchange positively answered with at least one candle."""
         since = start_ts
         last_ts = None
+        answered = False
         max_batch = int((end_ts - start_ts) // (step_ms * max(1, min(limit, 500)))) + 4
         max_batch = min(500, max(4, max_batch))
 
         for _ in range(max_batch):
             if since > end_ts:
                 break
-            ohlcv = exchange.fetch_ohlcv(ccxt_symbol, timeframe, since=since, limit=min(limit, 500))
+            ohlcv = self._fetch_ohlcv(exchange, symbol, timeframe, since=since, limit=min(limit, 500))
             if not ohlcv:
                 break
+            answered = True
 
             batch_min_ts = ohlcv[0][0]
             batch_last_ts = ohlcv[-1][0]
@@ -138,6 +164,7 @@ class KlineService:
                 break
 
         db.commit()
+        return answered
 
     def _align_range(self, start_ts: int, end_ts: int, step_ms: int) -> tuple[int, int]:
         aligned_start = (start_ts // step_ms) * step_ms
@@ -199,10 +226,9 @@ class KlineService:
 
         def fetch_latest_from_exchanges() -> list[dict]:
             nonlocal last_error
-            ccxt_symbol = symbol.replace("-", "/")
             for exchange in self.exchanges:
                 try:
-                    ohlcv = exchange.fetch_ohlcv(ccxt_symbol, timeframe, limit=limit)  # type: ignore[attr-defined]
+                    ohlcv = self._fetch_ohlcv(exchange, symbol, timeframe, limit=limit)
                     self._store_ohlcv(db, symbol, timeframe, ohlcv)
                     db.commit()
                     return [self._candle_to_dict(c) for c in ohlcv]
@@ -244,6 +270,12 @@ class KlineService:
 
         start_ts, end_ts = self._align_range(start_ts, end_ts, step_ms)
 
+        # A bar that has not closed yet can never be cached, so the range would never be covered.
+        last_closed = (int(time.time() * 1000) // step_ms) * step_ms - step_ms
+        end_ts = min(end_ts, last_closed)
+        if end_ts < start_ts:
+            return []
+
         # Check cache
         cached = self._query_range(db, symbol, timeframe, start_ts, end_ts)
         missing = self._find_missing_ranges(cached, start_ts, end_ts, step_ms)
@@ -252,11 +284,21 @@ class KlineService:
 
         last_error = None
         for gap_start, gap_end in missing:
+            gap_key = (symbol, timeframe, gap_start, gap_end)
+            if not force_refresh and gap_key in self._empty_gaps:
+                continue
+
+            filled = False
+            gap_failed = not self.exchanges  # no exchange configured is a failure, not an empty range
+            answered = False
             for exchange in self.exchanges:
                 try:
-                    self._fetch_and_store_range(exchange, db, symbol, timeframe, limit, gap_start, gap_end, step_ms)
+                    answered |= self._fetch_and_store_range(
+                        exchange, db, symbol, timeframe, limit, gap_start, gap_end, step_ms
+                    )
                 except Exception as exc:
                     last_error = exc
+                    gap_failed = True
                     try:
                         db.rollback()
                     except Exception:
@@ -264,13 +306,25 @@ class KlineService:
                     continue
 
                 gap_cached = self._query_range(db, symbol, timeframe, gap_start, gap_end)
+                filled = filled or bool(gap_cached)
                 if self._range_is_covered(gap_cached, gap_start, gap_end, step_ms):
                     break
+
+            # Only memoize when an exchange positively answered and still had nothing in
+            # range. Transport failures, empty payloads and a missing exchange list stay
+            # retryable, or a transient outage would 404 this range until restart.
+            if answered and not filled and not gap_failed:
+                self._empty_gaps.add(gap_key)
 
         cached = self._query_range(db, symbol, timeframe, start_ts, end_ts)
         if cached:
             return [self._to_dict(k) for k in cached]
-        raise last_error or RuntimeError("Failed to fetch klines")
+        if last_error is not None:
+            raise last_error
+        if not self.exchanges:
+            raise RuntimeError("No usable exchange configured (KLINE_EXCHANGES)")
+        # Exchanges answered but the range holds no candles — caller turns this into a 404.
+        return []
 
     def _to_dict(self, k: Kline) -> dict:
         return {

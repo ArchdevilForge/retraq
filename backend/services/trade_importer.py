@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy.orm import Session
 from models import Trade, TradeFill
-from services.binance_trade_aggregate import Fill, aggregate_fills_to_trades
+from services.binance_trade_aggregate import Fill, aggregate_fills_to_trades, normalize_side
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
 # Langge delivery-sheet columns
@@ -106,6 +106,7 @@ class TradeImporter:
                     f"列映射失败，缺少 {col}。请使用模板「币安 U 本位合约交易历史」与下载中心的交易历史表。"
                 )
         fills: list[Fill] = []
+        total = len(df)
         skipped = 0
         for _, row in df.iterrows():
             try:
@@ -125,11 +126,12 @@ class TradeImporter:
                 if ts is None:
                     skipped += 1
                     continue
+                side = normalize_side(row["side"])
                 fills.append(
                     Fill(
                         time_ms=ts,
                         symbol=sym,
-                        side=str(row["side"]),
+                        side=side,
                         price=price,
                         qty=qty,
                         realized_pnl=pnl,
@@ -144,7 +146,7 @@ class TradeImporter:
                     dataset_id=dataset_id,
                     trade_id=None,
                     symbol=f.symbol,
-                    side=str(f.side).upper(),
+                    side=normalize_side(f.side),
                     price=f.price,
                     qty=f.qty,
                     time_ms=f.time_ms,
@@ -173,14 +175,17 @@ class TradeImporter:
             db.add(trade)
             db.flush()
             for fr in fill_rows:
-                if fr.symbol != ct.symbol:
+                if fr.symbol != ct.symbol or fr.trade_id is not None:
                     continue
+                # A flipping fill closes one cycle and opens the next at the same
+                # instant; first claim wins so it stays with the cycle it closed.
                 if ct.entry_time <= fr.time_ms <= (ct.exit_time or ct.entry_time):
                     fr.trade_id = trade.id
             success += 1
-        db.commit()
+        db.flush()
+        # total/success/failed stay on the sheet-row denominator used by the other templates.
         return {
-            "total": len(fills),
+            "total": total,
             "success": success,
             "failed": skipped,
             "fills": len(fills),
@@ -221,6 +226,10 @@ class TradeImporter:
                 if not is_valid_symbol(normalized_symbol):
                     failed += 1
                     continue
+                entry_time = self._parse_timestamp(row["entry_time"])
+                if entry_time is None:
+                    failed += 1
+                    continue
                 trade = Trade(
                     dataset_id=dataset_id,
                     symbol=normalized_symbol,
@@ -231,7 +240,7 @@ class TradeImporter:
                     profit=float(row["profit"]) if pd.notna(row.get("profit")) else None,
                     profit_rate=self._parse_rate(row.get("profit_rate")),
                     margin=float(row["margin"]) if pd.notna(row.get("margin")) else None,
-                    entry_time=self._parse_timestamp(row["entry_time"]),
+                    entry_time=entry_time,
                     exit_time=self._parse_timestamp(row.get("exit_time")),
                 )
                 db.add(trade)
@@ -240,7 +249,7 @@ class TradeImporter:
                 success += 1
             except Exception:
                 failed += 1
-        db.commit()
+        db.flush()
         return {"total": total, "success": success, "failed": failed}
 
     def _attach_synthetic_fills(self, db: Session, dataset_id: int, trade: Trade) -> None:
@@ -282,18 +291,21 @@ class TradeImporter:
             return "long"
         if "空" in d or "short" in d or "卖" in d:
             return "short"
-        return d
+        raise ValueError(f"无法识别的方向：{direction}")
 
     def _parse_rate(self, rate) -> float | None:
+        """收益率 is a decimal ratio of return-on-margin (0.2264 = +22.64%)."""
         if pd.isna(rate):
             return None
         if isinstance(rate, str):
-            return float(rate.replace("%", "").strip()) / 100
-        v = float(rate)
-        # Langge sheets may store whole percents (10) or decimals (0.1); API uses 0–1 for fmtPct.
-        if abs(v) > 1:
-            return v / 100
-        return v
+            s = rate.strip()
+            try:
+                if "%" in s:
+                    return float(s.replace("%", "").strip()) / 100
+                return float(s)
+            except ValueError:
+                return None
+        return float(rate)
 
     def _parse_timestamp(self, ts) -> int | None:
         if pd.isna(ts):
@@ -310,9 +322,21 @@ class TradeImporter:
                 ts = ts.replace(tzinfo=ZoneInfo('Asia/Shanghai'))
             return int(ts.timestamp() * 1000)
         if isinstance(ts, str):
-            dt = pd.to_datetime(ts).tz_localize('Asia/Shanghai')
+            try:
+                dt = pd.to_datetime(ts)
+            except (ValueError, TypeError):
+                return None
+            if pd.isna(dt):  # to_datetime yields NaT (not a raise) for '' / 'nan'
+                return None
+            if dt.tz is None:
+                dt = dt.tz_localize('Asia/Shanghai')
             return int(dt.timestamp() * 1000)
-        return int(ts)
+        try:
+            v = float(ts)
+        except (ValueError, TypeError):
+            return None
+        # 数字时间戳：小于 1e11 视为秒，否则视为毫秒
+        return int(v * 1000) if abs(v) < 1e11 else int(v)
 
 
 trade_importer = TradeImporter()

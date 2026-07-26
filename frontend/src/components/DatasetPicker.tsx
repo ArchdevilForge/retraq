@@ -14,7 +14,7 @@ function truncateMiddle(name: string, max = 36): string {
 
 export default function DatasetPicker() {
   const { toast } = useToast();
-  const { datasets, activeDatasetId, setActiveDatasetId, loading, refreshDatasets, notifyTradesChanged } =
+  const { datasets, activeDatasetId, setActiveDatasetId, loading, error, refreshDatasets, notifyTradesChanged } =
     useDataset();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -24,6 +24,7 @@ export default function DatasetPicker() {
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 320 });
 
   const active = datasets.find((p) => p.id === activeDatasetId);
+  const emptyLabel = error ? '表格加载失败' : '无表格';
 
   const updatePanelPos = () => {
     const el = triggerRef.current;
@@ -63,10 +64,16 @@ export default function DatasetPicker() {
     setImportBusy(true);
     try {
       const r = await importTrades(file, 'auto', { replace: true });
-      await refreshDatasets();
+      toast(`导入完成：${r.success} 笔成功，${r.failed} 笔跳过`, 'success');
       if (r.dataset_id != null) setActiveDatasetId(r.dataset_id);
       notifyTradesChanged();
-      toast(`导入完成：${r.success} 笔成功，${r.failed} 笔跳过`, 'success');
+      // Refresh outside the import's own error path: a failing list refetch must not
+      // be reported as a failed import.
+      try {
+        await refreshDatasets();
+      } catch {
+        toast('表格列表刷新失败，请手动刷新页面', 'error');
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : '导入失败', 'error');
     } finally {
@@ -116,7 +123,7 @@ export default function DatasetPicker() {
       <input
         ref={fileRef}
         type="file"
-        accept=".xlsx,.xls,.csv"
+        accept=".xlsx,.csv"
         className="hidden"
         disabled={importBusy}
         aria-label="导入表格文件"
@@ -148,13 +155,18 @@ export default function DatasetPicker() {
       >
         <span className="flex min-w-0 items-center gap-2">
           <Database className="h-4 w-4 shrink-0 oc-text-brand" aria-hidden />
-          <span className="truncate">{active ? truncateMiddle(active.name, 42) : '无表格'}</span>
+          <span className="truncate">{active ? truncateMiddle(active.name, 42) : emptyLabel}</span>
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 opacity-60 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>
+      {error ? (
+        <span className="max-w-[16rem] truncate text-[12px] oc-text-loss" role="alert" title={error}>
+          表格加载失败：{error}
+        </span>
+      ) : null}
       {listPanel}
     </div>
   );

@@ -1,13 +1,21 @@
 """Shared API test fixtures."""
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+import os
+import tempfile
 
-from database import Base, get_db
-from main import app
-from models import Dataset  # noqa: F401 — register metadata
+# main.py runs ensure_database() at import time; point it at a throwaway file so a
+# test run never migrates or purges the developer's real backend/trading.db.
+_TMP_DB = os.path.join(tempfile.mkdtemp(prefix="retraq-tests-"), "test.db")
+os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB}"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from database import Base, get_db  # noqa: E402
+from main import app  # noqa: E402
+from models import Dataset  # noqa: E402,F401 — register metadata
 
 
 @pytest.fixture()

@@ -563,6 +563,17 @@ export default function TrainingChart({
         </div>
       </div>
 
+      {!compareEnabled && (compareLoading || compareError) ? (
+        <div className="oc-chart-toolbar shrink-0">
+          <span className="flex min-w-0 items-center gap-2 text-[12px]">
+            {compareLoading ? <span className="oc-spinner" /> : null}
+            <span className={compareError ? 'truncate oc-text-loss' : 'truncate oc-text-faint'} role={compareError ? 'alert' : undefined}>
+              {compareError ?? '对比 K 线加载中…'}
+            </span>
+          </span>
+        </div>
+      ) : null}
+
       {compareEnabled ? (
         <div className="oc-chart-shell flex min-h-0 flex-1 flex-col">
           <div className="oc-chart-toolbar">

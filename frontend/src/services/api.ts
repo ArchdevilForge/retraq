@@ -5,6 +5,8 @@ type ApiFetchInit = RequestInit & {
   params?: Record<string, string | number | boolean | undefined | null>;
   /** Skip dataset header even on dataset-scoped paths. */
   skipDataset?: boolean;
+  /** Pin the dataset header instead of re-reading localStorage (paged loops must not drift). */
+  datasetId?: string | null;
 };
 
 function needsDatasetHeader(path: string): boolean {
@@ -27,10 +29,10 @@ function buildUrl(path: string, params?: ApiFetchInit['params']): string {
 }
 
 async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
-  const { params, skipDataset, headers: initHeaders, ...rest } = init;
+  const { params, skipDataset, datasetId, headers: initHeaders, ...rest } = init;
   const headers = new Headers(initHeaders);
   if (!skipDataset && needsDatasetHeader(path)) {
-    const id = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
+    const id = datasetId !== undefined ? datasetId : localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
     if (id) headers.set('X-Dataset-Id', id);
   }
   const res = await fetch(buildUrl(path, params), { ...rest, headers });
@@ -87,7 +89,8 @@ export interface Trade {
   id: number;
   symbol: string;
   direction: 'long' | 'short';
-  leverage: number;
+  /** Nullable column; the 1.0 default only applies on insert. */
+  leverage: number | null;
   entry_price: number;
   exit_price: number | null;
   profit: number | null;
@@ -179,24 +182,38 @@ export async function fetchSymbolStats(): Promise<SymbolStats> {
   return apiFetch<SymbolStats>('/api/stats/symbols');
 }
 
+/** Paged loader; `total` is the server-side row count, which may exceed `trades.length`. */
+export async function fetchTradesWithTotal(
+  filters?: { symbol?: string; start_date?: number; end_date?: number },
+  options?: { limit?: number; maxPages?: number; page?: number },
+): Promise<{ trades: Trade[]; total: number }> {
+  const limit = options?.limit ?? 2000;
+  const maxPages = options?.maxPages ?? 20;
+  const startPage = options?.page ?? 1;
+  // Pin the dataset once so a mid-flight switch cannot merge two datasets into one array.
+  const datasetId = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY);
+
+  const allTrades: Trade[] = [];
+  let total = 0;
+  for (let page = startPage; page < startPage + maxPages; page += 1) {
+    const data = await apiFetch<TradesResponse>('/api/trades', {
+      params: { ...filters, page, limit },
+      datasetId,
+    });
+    allTrades.push(...data.data);
+    total = data.total;
+    if (allTrades.length >= data.total || data.data.length === 0) break;
+  }
+
+  return { trades: allTrades, total };
+}
+
 export async function fetchTrades(
   filters?: { symbol?: string; start_date?: number; end_date?: number },
   options?: { limit?: number; maxPages?: number; page?: number },
 ): Promise<Trade[]> {
-  const limit = options?.limit ?? 2000;
-  const maxPages = options?.maxPages ?? 20;
-  const startPage = options?.page ?? 1;
-
-  const allTrades: Trade[] = [];
-  for (let page = startPage; page < startPage + maxPages; page += 1) {
-    const data = await apiFetch<TradesResponse>('/api/trades', {
-      params: { ...filters, page, limit },
-    });
-    allTrades.push(...data.data);
-    if (allTrades.length >= data.total || data.data.length === 0) break;
-  }
-
-  return allTrades;
+  const { trades } = await fetchTradesWithTotal(filters, options);
+  return trades;
 }
 
 function importErrorMessage(err: unknown): string {
@@ -245,7 +262,8 @@ export interface StatsOverview {
   total_pnl: number;
   /** Percent 0–100 (not 0–1). Display as `${win_rate.toFixed(1)}%`, not fmtPct. */
   win_rate: number;
-  profit_factor: number;
+  /** Null when there are no losing trades (the factor is undefined). */
+  profit_factor: number | null;
   max_drawdown: number;
   /** Hours. */
   avg_holding_time: number;

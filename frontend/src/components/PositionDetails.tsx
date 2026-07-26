@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { Trade, TradeFill } from '../services/api';
 import { fetchTradeFills } from '../services/api';
 import { fmtDateTime, fmtDurationMs, fmtMoney, fmtPct } from '../utils/format';
+import { fmtPrice, isSyntheticFills } from '../utils/fills';
 
 function DetailRow({ label, value, valueClassName = '' }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -15,13 +16,24 @@ function DetailRow({ label, value, valueClassName = '' }: { label: string; value
 
 function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () => void }) {
   const [fills, setFills] = useState<TradeFill[]>([]);
+  const [fillsError, setFillsError] = useState(false);
 
   useEffect(() => {
-    if (!trade?.id) {
-      setFills([]);
-      return;
-    }
-    fetchTradeFills(trade.id).then(setFills).catch(() => setFills([]));
+    const tradeId = trade?.id;
+    setFills([]);
+    setFillsError(false);
+    if (!tradeId) return;
+    let ignore = false;
+    fetchTradeFills(tradeId)
+      .then((data) => {
+        if (!ignore) setFills(data);
+      })
+      .catch(() => {
+        if (!ignore) setFillsError(true);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [trade?.id]);
 
   if (!trade) {
@@ -37,6 +49,7 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
   const profitColor = (trade.profit ?? 0) >= 0 ? 'oc-text-profit' : 'oc-text-loss';
   const holdMs =
     trade.exit_time != null && trade.entry_time != null ? trade.exit_time - trade.entry_time : null;
+  const synthetic = isSyntheticFills(fills, trade);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -64,25 +77,28 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
           />
           <DetailRow label="持仓" value={holdMs == null ? '—' : fmtDurationMs(holdMs)} />
           <DetailRow label="开仓" value={fmtDateTime(trade.entry_time)} />
-          <DetailRow label="开仓价" value={trade.entry_price.toFixed(4)} />
+          <DetailRow label="开仓价" value={fmtPrice(trade.entry_price)} />
           <DetailRow label="平仓" value={trade.exit_time == null ? '—' : fmtDateTime(trade.exit_time)} />
-          <DetailRow label="平仓价" value={trade.exit_price == null ? '—' : trade.exit_price.toFixed(4)} />
+          <DetailRow label="平仓价" value={trade.exit_price == null ? '—' : fmtPrice(trade.exit_price)} />
           <div className={`flex justify-between border-t border-[var(--border-weaker-base)] pt-3 text-[18px] font-medium ${profitColor}`}>
             <span>盈亏</span>
             <span className="font-mono tabular-nums">{trade.profit == null ? '—' : fmtMoney(trade.profit)}</span>
           </div>
           <DetailRow label="收益率" value={trade.profit_rate == null ? '—' : fmtPct(trade.profit_rate)} />
         </div>
-        {fills.length > 0 ? (
+        {fillsError ? (
+          <p className="text-[13px] oc-text-loss" role="alert">
+            成交明细加载失败，请检查后端服务
+          </p>
+        ) : fills.length > 0 ? (
           <div className="panel-card">
             <div className="panel-card-title">成交 {fills.length} 笔</div>
             <ul className="max-h-52 space-y-1.5 overflow-y-auto font-mono text-[13px] leading-snug">
               {fills.map((f) => {
-                const synthetic = fills.length <= 2 && f.qty === 1 && trade.margin != null;
-                const usdt = synthetic ? trade.margin! : f.price * f.qty;
+                const usdt = synthetic && trade.margin != null ? trade.margin : f.price * f.qty;
                 return (
                   <li key={f.id} className={f.side === 'BUY' ? 'oc-text-profit' : 'oc-text-loss'}>
-                    {f.side === 'BUY' ? '买入' : '卖出'} {fmtMoney(usdt)}U @ {f.price.toFixed(4)} ·{' '}
+                    {f.side === 'BUY' ? '买入' : '卖出'} {fmtMoney(usdt)}U @ {fmtPrice(f.price)} ·{' '}
                     {new Intl.DateTimeFormat('zh-CN', {
                       hour: '2-digit',
                       minute: '2-digit',

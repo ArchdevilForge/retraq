@@ -16,6 +16,8 @@ import {
   unrealizedPnl,
   usedMargin,
   MAX_LEVERAGE,
+  MIN_SCENARIO_BARS,
+  MAX_SCENARIO_BARS,
 } from '../utils/training';
 
 function defaultRange(): { start: string; end: string } {
@@ -62,6 +64,8 @@ export default function TrainPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
   const [startLocal, setStartLocal] = useState(range0.start);
   const [endLocal, setEndLocal] = useState(range0.end);
+  const [barCount, setBarCount] = useState(200);
+  const [randomFromPool, setRandomFromPool] = useState(false);
   const [contextBars, setContextBars] = useState(DEFAULT_CONTEXT_BARS);
   const [startEquity, setStartEquity] = useState(DEFAULT_START_EQUITY);
   const [feeRatePct, setFeeRatePct] = useState(DEFAULT_FEE_RATE * 100);
@@ -94,7 +98,12 @@ export default function TrainPage() {
   const posTp = run?.position?.takeProfit;
   const hasPos = Boolean(run?.position);
   useEffect(() => {
-    if (!hasPos) return;
+    // clear on close so the next open (possibly reversed) never inherits the old levels
+    if (!hasPos) {
+      setSl('');
+      setTp('');
+      return;
+    }
     setSl(posSl != null ? String(posSl) : '');
     setTp(posTp != null ? String(posTp) : '');
   }, [hasPos, posSl, posTp]);
@@ -119,18 +128,39 @@ export default function TrainPage() {
         feeRate,
       });
     } else {
-      if (pool.length === 0) {
-        toast('训练池为空', 'error');
-        return;
+      const n = Math.max(
+        MIN_SCENARIO_BARS,
+        Math.min(MAX_SCENARIO_BARS, Math.floor(barCount) || 200),
+      );
+      if (randomFromPool) {
+        if (pool.length === 0) {
+          toast('训练池为空', 'error');
+          return;
+        }
+        saveTrainingPool(pool);
+        await startRandom({
+          pool,
+          timeframe,
+          barCount: n,
+          contextBars,
+          startEquity,
+          feeRate,
+        });
+      } else {
+        const sym = normalizeSymbol(symbol);
+        if (!sym) {
+          toast('请填写交易对', 'error');
+          return;
+        }
+        await startRandom({
+          pool: [sym],
+          timeframe,
+          barCount: n,
+          contextBars,
+          startEquity,
+          feeRate,
+        });
       }
-      saveTrainingPool(pool);
-      await startRandom({
-        pool,
-        timeframe,
-        contextBars,
-        startEquity,
-        feeRate,
-      });
     }
   };
 
@@ -202,19 +232,57 @@ export default function TrainPage() {
             </>
           ) : (
             <div className="flex flex-col gap-2">
-              <button type="button" className="oc-btn oc-btn--sm oc-btn--secondary" onClick={() => setShowPool((v) => !v)}>
-                {showPool ? '收起训练池' : '编辑训练池'}
-              </button>
-              {showPool ? (
-                <textarea
-                  className="oc-input-wrap min-h-28 font-mono text-xs"
-                  value={poolText}
-                  onChange={(e) => setPoolText(e.target.value)}
-                  onBlur={() => saveTrainingPool(pool)}
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={randomFromPool}
+                  onChange={(e) => setRandomFromPool(e.target.checked)}
                 />
+                从训练池随机交易对
+              </label>
+              {randomFromPool ? (
+                <>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
+                    onClick={() => setShowPool((v) => !v)}
+                  >
+                    {showPool ? '收起训练池' : '编辑训练池'}
+                  </button>
+                  {showPool ? (
+                    <textarea
+                      className="oc-input-wrap min-h-28 font-mono text-xs"
+                      value={poolText}
+                      onChange={(e) => setPoolText(e.target.value)}
+                      onBlur={() => saveTrainingPool(pool)}
+                    />
+                  ) : (
+                    <p className="text-xs opacity-70">池内 {pool.length} 个交易对</p>
+                  )}
+                </>
               ) : (
-                <p className="text-xs opacity-70">池内 {pool.length} 个交易对</p>
+                <label className="flex flex-col gap-1 text-xs">
+                  交易对
+                  <input
+                    className="oc-input-wrap"
+                    value={symbol}
+                    onChange={(e) => setSymbol(e.target.value)}
+                    placeholder="BTC-USDT"
+                  />
+                </label>
               )}
+              <label className="flex flex-col gap-1 text-xs">
+                场景根数（{MIN_SCENARIO_BARS}–{MAX_SCENARIO_BARS}）
+                <input
+                  type="number"
+                  className="oc-input-wrap"
+                  min={MIN_SCENARIO_BARS}
+                  max={MAX_SCENARIO_BARS}
+                  value={barCount}
+                  onChange={(e) => setBarCount(Number(e.target.value) || 200)}
+                />
+              </label>
+              <p className="text-xs opacity-60">时间窗口在历史内随机抽取</p>
             </div>
           )}
 
@@ -385,7 +453,10 @@ export default function TrainPage() {
                 type="button"
                 className="oc-btn oc-btn--sm oc-btn--secondary w-full"
                 disabled={run.locked}
-                onClick={() => setStops(parseOpt(sl), parseOpt(tp))}
+                onClick={() => {
+                  const err = setStops(parseOpt(sl), parseOpt(tp));
+                  if (err) toast(err, 'error');
+                }}
               >
                 更新止损止盈
               </button>

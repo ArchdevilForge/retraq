@@ -11,14 +11,15 @@ import {
 } from './chartRulerOverlay';
 import type { CandlestickData, LineData, SeriesMarker, Time } from 'lightweight-charts';
 import { useDataset } from '../context/DatasetContext';
-import { useTheme } from '../context/ThemeContext';
 import { fetchKlines, fetchSymbolStats, fetchTradeFills, TIMEFRAMES } from '../services/api';
 import type { Kline, Trade, TradeFill, Timeframe } from '../services/api';
+import { fmtPrice, isSyntheticFills } from '../utils/fills';
 import {
   applyCandleChartTheme,
   klinesToVolume,
   readChartTheme,
   rulerStyleFromTheme,
+  type ChartTheme,
 } from '../utils/chartTheme';
 
 const TIMEFRAME_MS: Record<Timeframe, number> = {
@@ -86,9 +87,9 @@ interface Props {
 
 function ChartManager({ symbol, selectedTrade }: Props) {
   const { activeDatasetId } = useDataset();
-  const { theme } = useTheme();
-  const chartTheme = useMemo(() => readChartTheme(), [theme]);
+  const [chartTheme, setChartTheme] = useState<ChartTheme>(() => readChartTheme());
   const [tradeFills, setTradeFills] = useState<TradeFill[]>([]);
+  const [tradeFillsError, setTradeFillsError] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const compareContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any | null>(null);
@@ -229,7 +230,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
           lineWidth: 3,
           lineStyle: 0,
           axisLabelVisible: true,
-          title: price.toFixed(4),
+          title: fmtPrice(price),
         });
         userPriceLinesRef.current.push(line);
         setDrawMode('none');
@@ -298,13 +299,22 @@ function ChartManager({ symbol, selectedTrade }: Props) {
   }, [paintRulerOverlay]);
 
   useEffect(() => {
-    if (!selectedTrade?.id) {
-      setTradeFills([]);
-      return;
-    }
-    fetchTradeFills(selectedTrade.id)
-      .then(setTradeFills)
-      .catch(() => setTradeFills([]));
+    const tradeId = selectedTrade?.id;
+    setTradeFills([]);
+    setTradeFillsError(false);
+    if (!tradeId) return;
+    let ignore = false;
+    fetchTradeFills(tradeId)
+      .then((fills) => {
+        if (!ignore) setTradeFills(fills);
+      })
+      .catch((err: unknown) => {
+        console.error(err);
+        if (!ignore) setTradeFillsError(true);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [selectedTrade?.id, activeDatasetId]);
 
   useEffect(() => {
@@ -340,7 +350,9 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     const start = Math.floor(rawStart / tfMs) * tfMs;
     const endBase = selectedTrade.exit_time ?? selectedTrade.entry_time;
     const rawEnd = endBase + TRADE_FETCH_BUFFER_BARS * tfMs;
-    const end = Math.ceil(rawEnd / tfMs) * tfMs;
+    // 不请求尚未收盘的 K 线，否则缓存永远算不上覆盖，每次都回源交易所
+    const lastClosedEnd = Math.floor(Date.now() / tfMs) * tfMs - tfMs;
+    const end = Math.max(start, Math.min(Math.ceil(rawEnd / tfMs) * tfMs, lastClosedEnd));
     return { start, end };
   }, [activeTimeframe, selectedTrade]);
 
@@ -496,8 +508,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
       }
     };
 
-    const syntheticFills =
-      tradeFills.length > 0 && tradeFills.length <= 2 && tradeFills.every((f) => f.qty === 1);
+    const syntheticFills = isSyntheticFills(tradeFills, trade);
 
     let entryUsdtSum = 0;
     let exitUsdtSum = 0;
@@ -534,7 +545,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
           position: 'belowBar',
           color: buyColor,
           shape: 'arrowUp',
-          text: uStr ? `买 ${uStr} @${avg.toFixed(2)}` : `买 @${avg.toFixed(4)}`,
+          text: uStr ? `买 ${uStr} @${fmtPrice(avg)}` : `买 @${fmtPrice(avg)}`,
         });
       }
       if (b.sells > 0) {
@@ -545,7 +556,7 @@ function ChartManager({ symbol, selectedTrade }: Props) {
           position: 'aboveBar',
           color: sellColor,
           shape: 'arrowDown',
-          text: uStr ? `卖 ${uStr} @${avg.toFixed(2)}` : `卖 @${avg.toFixed(4)}`,
+          text: uStr ? `卖 ${uStr} @${fmtPrice(avg)}` : `卖 @${fmtPrice(avg)}`,
         });
       }
     }
@@ -906,6 +917,14 @@ function ChartManager({ symbol, selectedTrade }: Props) {
     };
   }, []);
 
+  // ThemeProvider writes data-theme from a parent effect, which React runs after this
+  // child's effects; observe the attribute so chart colors never lag a toggle.
+  useEffect(() => {
+    const observer = new MutationObserver(() => setChartTheme(readChartTheme()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     if (chartRef.current && seriesRef.current) {
       applyCandleChartTheme(chartRef.current, seriesRef.current, chartTheme);
@@ -1155,10 +1174,15 @@ function ChartManager({ symbol, selectedTrade }: Props) {
                 {mainKlineError && !mainHasData && (
                   <span className="ml-2 max-w-[240px] truncate text-[12px] oc-text-loss">{mainKlineError}</span>
                 )}
+                {selectedTrade && tradeFillsError && (
+                  <span className="ml-2 text-[12px] oc-text-loss" role="alert">
+                    成交明细加载失败，K 线标注不完整
+                  </span>
+                )}
                 {selectedTrade && mainHasData && tradeFills.length > 0 && (
                   <span className="ml-2 text-[12px] oc-text-faint">成交 {tradeFills.length} 笔 → K 线标注</span>
                 )}
-                {selectedTrade && mainHasData && tradeFills.length === 0 && (
+                {selectedTrade && mainHasData && !tradeFillsError && tradeFills.length === 0 && (
                   <span className="ml-2 text-[12px] oc-text-brand">无成交明细，仅均价线；请用交易历史模板重新导入</span>
                 )}
                 {drawMode === 'hline' ? (

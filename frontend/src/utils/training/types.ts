@@ -66,6 +66,8 @@ export const DEFAULT_START_EQUITY = 100;
 export const DEFAULT_ORDER_USDT = 20;
 export const DEFAULT_FEE_RATE = 0.0005;
 export const DEFAULT_CONTEXT_BARS = 50;
+/** Bars that must stay ahead of the cursor for a run to be playable. */
+export const MIN_DECISION_BARS = 20;
 export const MAX_LEVERAGE = 20;
 export const MIN_SCENARIO_BARS = 100;
 export const MAX_SCENARIO_BARS = 300;

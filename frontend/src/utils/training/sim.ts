@@ -90,6 +90,28 @@ function closeQty(
   };
 }
 
+/** Reject levels on the wrong side of the mark (null/undefined always allowed). */
+function checkStops(
+  direction: Direction,
+  mark: number,
+  stopLoss?: number | null,
+  takeProfit?: number | null,
+): SimError | null {
+  if (stopLoss != null && Number.isFinite(stopLoss)) {
+    const wrongSide = direction === 'long' ? stopLoss >= mark : stopLoss <= mark;
+    if (wrongSide) {
+      return { ok: false, message: direction === 'long' ? '止损价须低于现价' : '止损价须高于现价' };
+    }
+  }
+  if (takeProfit != null && Number.isFinite(takeProfit)) {
+    const wrongSide = direction === 'long' ? takeProfit <= mark : takeProfit >= mark;
+    if (wrongSide) {
+      return { ok: false, message: direction === 'long' ? '止盈价须高于现价' : '止盈价须低于现价' };
+    }
+  }
+  return null;
+}
+
 /** Convert USDT notional → base qty at price. */
 export function usdtToBase(usdt: number, price: number): number {
   if (!(price > 0) || !(usdt > 0)) return 0;
@@ -121,6 +143,8 @@ export function marketOpen(
   const price = bar.close;
   const qty = usdtToBase(usdtNotional, price);
   if (!(qty > 0)) return { ok: false, message: '金额无效' };
+  const badStops = checkStops(direction, price, stopLoss, takeProfit);
+  if (badStops) return badStops;
   const margin = requiredMargin(price, qty, lev);
   const fee = feeOf(price, qty, ledger.account.feeRate);
   if (margin + fee > ledger.account.equity + 1e-9) {
@@ -186,46 +210,61 @@ export function marketClose(ledger: Ledger, bar: Kline, usdtNotional?: number): 
   return closeQty(ledger, bar, price, qty, qty >= pos.qty - 1e-12 ? '平仓' : '减仓');
 }
 
+/** Levels are validated against the cursor bar's close (current mark). */
 export function updateStops(
   ledger: Ledger,
+  bar: Kline,
   stopLoss?: number | null,
   takeProfit?: number | null,
 ): SimResult<Ledger> {
-  if (!ledger.position) return { ok: false, message: '当前无仓位' };
+  const pos = ledger.position;
+  if (!pos) return { ok: false, message: '当前无仓位' };
+  const nextSl = stopLoss === undefined ? pos.stopLoss : stopLoss;
+  const nextTp = takeProfit === undefined ? pos.takeProfit : takeProfit;
+  const badStops = checkStops(pos.direction, bar.close, nextSl, nextTp);
+  if (badStops) return badStops;
   return {
     ok: true,
     value: {
       ...ledger,
-      position: {
-        ...ledger.position,
-        stopLoss: stopLoss === undefined ? ledger.position.stopLoss : stopLoss,
-        takeProfit: takeProfit === undefined ? ledger.position.takeProfit : takeProfit,
-      },
+      position: { ...pos, stopLoss: nextSl, takeProfit: nextTp },
     },
   };
 }
 
-/** Evaluate SL then TP on the bar just revealed (SL wins if both hit). */
+/** Fill at the level, unless the bar gapped past it: then fill at the open, always inside the bar. */
+function stopFillPrice(bar: Kline, level: number, side: 'below' | 'above'): number {
+  return side === 'below'
+    ? Math.max(bar.low, Math.min(level, bar.open))
+    : Math.min(bar.high, Math.max(level, bar.open));
+}
+
+/** A level the bar opened beyond already filled at the open. */
 export function applyStopsOnBar(ledger: Ledger, bar: Kline): Ledger {
   const pos = ledger.position;
   if (!pos) return ledger;
 
-  const sl = pos.stopLoss;
-  if (sl != null && Number.isFinite(sl)) {
-    const hitSl = pos.direction === 'long' ? bar.low <= sl : bar.high >= sl;
-    if (hitSl) {
-      const r = closeQty(ledger, bar, sl, pos.qty, '止损');
-      if (r.ok) return r.value;
-    }
+  const long = pos.direction === 'long';
+  const sl = pos.stopLoss != null && Number.isFinite(pos.stopLoss) ? pos.stopLoss : null;
+  const tp = pos.takeProfit != null && Number.isFinite(pos.takeProfit) ? pos.takeProfit : null;
+
+  if (tp != null && (long ? bar.open >= tp : bar.open <= tp)) {
+    const r = closeQty(ledger, bar, bar.open, pos.qty, '止盈');
+    if (r.ok) return r.value;
+  }
+  if (sl != null && (long ? bar.open <= sl : bar.open >= sl)) {
+    const r = closeQty(ledger, bar, bar.open, pos.qty, '止损');
+    if (r.ok) return r.value;
   }
 
-  const tp = pos.takeProfit;
-  if (tp != null && Number.isFinite(tp)) {
-    const hitTp = pos.direction === 'long' ? bar.high >= tp : bar.low <= tp;
-    if (hitTp) {
-      const r = closeQty(ledger, bar, tp, pos.qty, '止盈');
-      if (r.ok) return r.value;
-    }
+  // open sits between the levels: intrabar order is unknown, SL wins the tie
+  if (sl != null && (long ? bar.low <= sl : bar.high >= sl)) {
+    const r = closeQty(ledger, bar, stopFillPrice(bar, sl, long ? 'below' : 'above'), pos.qty, '止损');
+    if (r.ok) return r.value;
+  }
+  if (tp != null && (long ? bar.high >= tp : bar.low <= tp)) {
+    const r = closeQty(ledger, bar, stopFillPrice(bar, tp, long ? 'above' : 'below'), pos.qty, '止盈');
+    if (r.ok) return r.value;
   }
 
   return ledger;

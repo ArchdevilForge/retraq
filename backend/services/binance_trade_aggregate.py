@@ -27,8 +27,22 @@ class ClosedTrade:
     margin: float | None
 
 
+_BUY_TOKENS = {"BUY", "买入", "买", "开多", "平空", "LONG"}
+_SELL_TOKENS = {"SELL", "卖出", "卖", "开空", "平多", "SHORT"}
+
+
+def normalize_side(raw: str) -> str:
+    """Map an export's side token to the 'BUY' | 'SELL' union stored in TradeFill."""
+    s = str(raw).strip().upper()
+    if s in _BUY_TOKENS:
+        return "BUY"
+    if s in _SELL_TOKENS:
+        return "SELL"
+    raise ValueError(f"Unknown fill side: {raw!r}")
+
+
 def _signed_qty(side: str, qty: float) -> float:
-    return qty if str(side).upper() == "BUY" else -qty
+    return qty if normalize_side(side) == "BUY" else -qty
 
 
 def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
@@ -45,6 +59,10 @@ def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
         round_pnl = 0.0
         round_entry_time: int | None = None
         round_direction: str | None = None
+        entry_sum = 0.0
+        entry_qty_acc = 0.0
+        exit_sum = 0.0
+        exit_qty_acc = 0.0
 
         def emit_closed(
             entry_qty: float,
@@ -57,10 +75,9 @@ def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
                 return
             ep = entry_sum / entry_qty
             xp = exit_sum / exit_qty
-            if round_direction == "long":
-                rate = (xp - ep) / ep if ep else None
-            else:
-                rate = (ep - xp) / ep if ep else None
+            margin = ep * entry_qty
+            # profit_rate is return-on-margin, same contract as the langge sheet.
+            rate = round_pnl / margin if margin > 0 else None
             trades.append(
                 ClosedTrade(
                     symbol=symbol,
@@ -71,7 +88,7 @@ def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
                     profit_rate=rate,
                     entry_time=round_entry_time or rows[0].time_ms,
                     exit_time=exit_time,
-                    margin=ep * entry_qty,
+                    margin=margin,
                 )
             )
 
@@ -95,11 +112,8 @@ def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
                 continue
 
             round_pnl += f.realized_pnl
-            remaining = close_qty
-            entry_sum = 0.0
-            entry_qty_acc = 0.0
-            exit_sum = 0.0
-            exit_qty_acc = 0.0
+            matched = min(close_qty, abs(pos))
+            remaining = matched
 
             while remaining > 1e-12 and lots:
                 lot = lots[0]
@@ -113,13 +127,27 @@ def aggregate_fills_to_trades(fills: list[Fill]) -> list[ClosedTrade]:
                 if lot["qty"] <= 1e-12:
                     lots.pop(0)
 
-            pos += s
-            if abs(pos) <= 1e-12:
-                pos = 0.0
-                emit_closed(entry_qty_acc, entry_sum, exit_qty_acc, exit_sum, f.time_ms)
-                lots = []
-                round_pnl = 0.0
-                round_entry_time = None
-                round_direction = None
+            if abs(pos) - matched > 1e-12:
+                pos += s
+                continue
+
+            emit_closed(entry_qty_acc, entry_sum, exit_qty_acc, exit_sum, f.time_ms)
+            lots = []
+            pos = 0.0
+            round_pnl = 0.0
+            round_entry_time = None
+            round_direction = None
+            entry_sum = 0.0
+            entry_qty_acc = 0.0
+            exit_sum = 0.0
+            exit_qty_acc = 0.0
+
+            # The fill closed more than the position held: the excess opens a new cycle.
+            residual = close_qty - matched
+            if residual > 1e-12:
+                lots = [{"qty": residual, "price": f.price}]
+                pos = residual if s > 0 else -residual
+                round_direction = "long" if s > 0 else "short"
+                round_entry_time = f.time_ms
 
     return trades

@@ -21,6 +21,7 @@ import {
   DEFAULT_CONTEXT_BARS,
   DEFAULT_FEE_RATE,
   DEFAULT_START_EQUITY,
+  MIN_DECISION_BARS,
 } from '../utils/training';
 
 export type StartManualInput = {
@@ -37,6 +38,8 @@ export type StartManualInput = {
 export type StartRandomInput = {
   pool: string[];
   timeframe?: Timeframe;
+  /** Fixed scenario length; omit to randomize within MIN..MAX. */
+  barCount?: number;
   contextBars?: number;
   compareSymbol?: string | null;
   startEquity?: number;
@@ -51,9 +54,15 @@ function buildRun(
   feeRate: number,
 ): TrainingRun {
   const ledger = emptyLedger(startEquity, feeRate);
-  const initial = initialCursorIndex(bars.length, scenario.contextBars);
+  // leave MIN_DECISION_BARS ahead of the cursor, but never collapse context below half the response
+  const minContext = Math.min(scenario.contextBars, Math.max(1, Math.floor(bars.length / 2)));
+  const contextBars = Math.max(
+    minContext,
+    Math.min(scenario.contextBars, bars.length - MIN_DECISION_BARS),
+  );
+  const initial = initialCursorIndex(bars.length, contextBars);
   return {
-    scenario,
+    scenario: { ...scenario, contextBars },
     account: ledger.account,
     cursorIndex: initial,
     initialCursorIndex: initial,
@@ -114,6 +123,7 @@ export function useTrainingRun() {
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
   const playRef = useRef(false);
+  const compareReqRef = useRef(0);
   const runRef = useRef(run);
   runRef.current = run;
   playRef.current = playing;
@@ -165,10 +175,18 @@ export function useTrainingRun() {
     return () => window.clearInterval(id);
   }, [playing, speed, step]);
 
+  /** Invalidate any compare fetch still in flight for the previous run. */
+  const resetCompareState = useCallback(() => {
+    compareReqRef.current += 1;
+    setCompareLoading(false);
+    setCompareError(null);
+  }, []);
+
   const startManual = useCallback(async (input: StartManualInput) => {
     setLoading(true);
     setError(null);
     setPlaying(false);
+    resetCompareState();
     try {
       const { bars, compareBars } = await loadPair(
         input.symbol,
@@ -201,16 +219,21 @@ export function useTrainingRun() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetCompareState]);
 
   const startRandom = useCallback(async (input: StartRandomInput) => {
     setLoading(true);
     setError(null);
     setPlaying(false);
+    resetCompareState();
     try {
+      const contextBars = input.contextBars ?? DEFAULT_CONTEXT_BARS;
       let lastErr: unknown;
       for (let i = 0; i < 5; i += 1) {
-        const pick = pickRandomScenario(input.pool, { timeframe: input.timeframe });
+        const pick = pickRandomScenario(input.pool, {
+          timeframe: input.timeframe,
+          barCount: input.barCount,
+        });
         if (!pick) throw new Error('训练池为空');
         try {
           const { bars, compareBars } = await loadPair(
@@ -220,7 +243,8 @@ export function useTrainingRun() {
             pick.endMs,
             input.compareSymbol,
           );
-          if (bars.length < 20) {
+          // need context plus a usable decision window, but never more than the draw asked for
+          if (bars.length < Math.min(pick.barCount, contextBars + MIN_DECISION_BARS)) {
             lastErr = new Error('数据不足');
             continue;
           }
@@ -229,7 +253,7 @@ export function useTrainingRun() {
             timeframe: pick.timeframe,
             startMs: pick.startMs,
             endMs: pick.endMs,
-            contextBars: input.contextBars ?? DEFAULT_CONTEXT_BARS,
+            contextBars,
             compareSymbol: input.compareSymbol ?? null,
           };
           setRun(
@@ -245,6 +269,10 @@ export function useTrainingRun() {
           return;
         } catch (e) {
           lastErr = e;
+          // 400 = the symbol itself is unknown, so redrawing it is pointless; 404 only
+          // means this window held no candles, which another draw may well fix.
+          const status = (e as { status?: number })?.status;
+          if (input.pool.length === 1 && status === 400) break;
         }
       }
       throw lastErr instanceof Error ? lastErr : new Error('随机场景加载失败');
@@ -254,7 +282,7 @@ export function useTrainingRun() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetCompareState]);
 
   const reveal = useCallback(() => {
     setPlaying(false);
@@ -280,28 +308,26 @@ export function useTrainingRun() {
     });
   }, []);
 
+  // Resolve against runRef synchronously: the caller toasts the rejection, so it cannot wait for a render.
   const applyOrder = useCallback((fn: (run: TrainingRun, bar: Kline, ledger: Ledger) => ReturnType<typeof marketOpen>) => {
-    let message: string | null = null;
-    setRun((prev) => {
-      if (!prev || prev.locked) {
-        message = '训练已结算';
-        return prev;
-      }
-      const bar = prev.bars[prev.cursorIndex];
-      if (!bar) {
-        message = '无当前 K 线';
-        return prev;
-      }
-      const res = fn(prev, bar, ledgerFromRun(prev));
-      if (!res.ok) {
-        message = res.message;
-        return prev;
-      }
-      return applyLedger(prev, res.value);
+    const prev = runRef.current;
+    if (!prev || prev.locked) return '训练已结算';
+    const bar = prev.bars[prev.cursorIndex];
+    if (!bar) return '无当前 K 线';
+    const res = fn(prev, bar, ledgerFromRun(prev));
+    if (!res.ok) return res.message;
+    setRun((cur) => {
+      if (!cur) return cur;
+      if (cur === prev) return applyLedger(cur, res.value);
+      // Autoplay can advance the run between the check above and this commit; recompute
+      // against the fresh state rather than dropping the order silently.
+      if (cur.locked) return cur;
+      const freshBar = cur.bars[cur.cursorIndex];
+      if (!freshBar) return cur;
+      const retry = fn(cur, freshBar, ledgerFromRun(cur));
+      return retry.ok ? applyLedger(cur, retry.value) : cur;
     });
-    if (message) setError(message);
-    else setError(null);
-    return message;
+    return null;
   }, []);
 
   /** usdtNotional: quote size (USDT), converted to base qty inside sim. */
@@ -323,7 +349,7 @@ export function useTrainingRun() {
 
   const setStops = useCallback(
     (sl?: number | null, tp?: number | null) =>
-      applyOrder((_r, _bar, ledger) => updateStops(ledger, sl, tp)),
+      applyOrder((_r, bar, ledger) => updateStops(ledger, bar, sl, tp)),
     [applyOrder],
   );
 
@@ -342,8 +368,12 @@ export function useTrainingRun() {
   const setCompareSymbol = useCallback(async (raw: string | null) => {
     const current = runRef.current;
     if (!current) return;
+    // only the newest compare request may land
+    const reqId = compareReqRef.current + 1;
+    compareReqRef.current = reqId;
     if (!raw) {
       setCompareError(null);
+      setCompareLoading(false);
       setRun((prev) =>
         prev
           ? {
@@ -358,6 +388,7 @@ export function useTrainingRun() {
     const sym = normalizeSymbol(raw);
     if (!sym || sym === current.scenario.symbol) {
       setCompareError('对比交易对须与主图不同');
+      setCompareLoading(false);
       return;
     }
     setCompareLoading(true);
@@ -367,6 +398,7 @@ export function useTrainingRun() {
         start: current.scenario.startMs,
         end: current.scenario.endMs,
       });
+      if (compareReqRef.current !== reqId) return;
       if (!compareBars.length) throw new Error('对比 K 线为空');
       setRun((prev) =>
         prev
@@ -378,9 +410,10 @@ export function useTrainingRun() {
           : prev,
       );
     } catch (e) {
+      if (compareReqRef.current !== reqId) return;
       setCompareError(e instanceof Error ? e.message : '对比 K 线加载失败');
     } finally {
-      setCompareLoading(false);
+      if (compareReqRef.current === reqId) setCompareLoading(false);
     }
   }, []);
 

@@ -25,6 +25,8 @@ cd frontend && pnpm install && pnpm dev
 ## 检查
 
 ```bash
-cd frontend && pnpm typecheck && pnpm run lint
+cd frontend && pnpm typecheck && pnpm run lint && pnpm test
 cd backend && uv run pytest -q && uv run ruff check . && uv run mypy .
 ```
+
+单测：前端 `vitest`（`src/**/*.test.ts`，TZ 固定 `Asia/Shanghai`）；后端 `pytest`（`backend/tests/`，自动指向临时库，不动 `trading.db`）。CI 见 `.github/workflows/checks.yml`。
