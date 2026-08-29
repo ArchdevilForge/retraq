@@ -28,6 +28,12 @@ from services.annotation_service import (
     ValidationError,
     annotation_service,
 )
+from services.analysis_service import (
+    REVIEW_CHECKLISTS,
+    analysis_service,
+    list_reviews,
+    upsert_review,
+)
 
 ensure_database()
 
@@ -159,6 +165,50 @@ def binance_sync(db: Session = Depends(get_db)):
         raise HTTPException(401, f"币安 API 认证失败，请检查 Key 与 Secret：{e}")
     except ccxt.BaseError as e:
         raise HTTPException(502, f"币安接口请求失败：{e}")
+
+
+class ReviewUpsert(BaseModel):
+    cadence: str = Field(..., min_length=1, max_length=8)
+    period_key: str = Field(..., min_length=1, max_length=16)
+    content: str = Field(..., min_length=1)
+
+
+@app.get("/api/analysis/checklists")
+def review_checklists():
+    return {"data": [{"cadence": k, "label": v["label"], "questions": v["questions"]} for k, v in REVIEW_CHECKLISTS.items()]}
+
+
+@app.get("/api/analysis/by-setup")
+def analysis_by_setup(include_sim: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.by_setup(db, include_sim)
+
+
+@app.get("/api/analysis/by-error")
+def analysis_by_error(include_sim: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.by_error(db, include_sim)
+
+
+@app.get("/api/analysis/r-distribution")
+def analysis_r_distribution(include_sim: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.r_distribution(db, include_sim)
+
+
+@app.get("/api/analysis/discipline")
+def analysis_discipline(include_sim: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.discipline(db, include_sim)
+
+
+@app.get("/api/reviews")
+def reviews_list(cadence: Optional[str] = None, limit: int = 30, db: Session = Depends(get_db)):
+    return {"data": list_reviews(db, cadence, min(max(limit, 1), 200))}
+
+
+@app.put("/api/reviews")
+def reviews_upsert(body: ReviewUpsert, db: Session = Depends(get_db)):
+    try:
+        return upsert_review(db, body.cadence, body.period_key, body.content)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/import/templates")

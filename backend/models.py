@@ -111,6 +111,22 @@ class ChartDrawing(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class ReviewNote(Base):
+    """Review-cadence note on a global timeline, independent of datasets (docs/PRODUCT.md §三)."""
+
+    __tablename__ = "review_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cadence = Column(String(8), nullable=False)  # daily | weekly | monthly
+    period_key = Column(String(16), nullable=False)  # 2026-08-29 | 2026-W35 | 2026-08
+    content = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_review_period", "cadence", "period_key", unique=True),
+    )
+
+
 class MasterTrader(Base):
     """Futures Master Trader Profile (币安合约跟单顶级交易员)"""
 

@@ -565,3 +565,103 @@ export async function fetchBinanceSyncStatus(): Promise<BinanceSyncStatus> {
 export async function runBinanceSync(): Promise<BinanceSyncResult> {
   return apiFetch<BinanceSyncResult>('/api/binance/sync', { method: 'POST', skipDataset: true });
 }
+
+/* ---- Cross-dataset analysis + review cadence (docs/PRODUCT.md §三/§七) ---- */
+
+export interface SetupStat {
+  tag: string;
+  trade_count: number;
+  win_rate: number | null;
+  total_profit: number;
+}
+
+export interface ErrorStat {
+  tag: string;
+  trade_count: number;
+  total_profit: number;
+}
+
+export interface RDistribution {
+  buckets: { bucket: string; count: number }[];
+  without_stop: number;
+  avg_r: number | null;
+}
+
+export interface DisciplineStat {
+  annotated: number;
+  clean: number;
+  with_error: number;
+  unannotated: number;
+}
+
+export type OwnerGroup<T> = { self: T; sim: T };
+
+export async function fetchSetupStats(includeSim: boolean): Promise<OwnerGroup<SetupStat[]>> {
+  return apiFetch<OwnerGroup<SetupStat[]>>('/api/analysis/by-setup', {
+    params: { include_sim: includeSim },
+    skipDataset: true,
+  });
+}
+
+export async function fetchErrorStats(includeSim: boolean): Promise<OwnerGroup<ErrorStat[]>> {
+  return apiFetch<OwnerGroup<ErrorStat[]>>('/api/analysis/by-error', {
+    params: { include_sim: includeSim },
+    skipDataset: true,
+  });
+}
+
+export async function fetchRDistribution(includeSim: boolean): Promise<OwnerGroup<RDistribution>> {
+  return apiFetch<OwnerGroup<RDistribution>>('/api/analysis/r-distribution', {
+    params: { include_sim: includeSim },
+    skipDataset: true,
+  });
+}
+
+export async function fetchDiscipline(includeSim: boolean): Promise<OwnerGroup<DisciplineStat>> {
+  return apiFetch<OwnerGroup<DisciplineStat>>('/api/analysis/discipline', {
+    params: { include_sim: includeSim },
+    skipDataset: true,
+  });
+}
+
+export interface ReviewChecklist {
+  cadence: 'daily' | 'weekly' | 'monthly';
+  label: string;
+  questions: string[];
+}
+
+export interface ReviewNote {
+  id: number;
+  cadence: 'daily' | 'weekly' | 'monthly';
+  period_key: string;
+  content: string;
+  updated_at: string | null;
+}
+
+export async function fetchReviewChecklists(): Promise<ReviewChecklist[]> {
+  const res = await apiFetch<{ data: ReviewChecklist[] }>('/api/analysis/checklists', {
+    skipDataset: true,
+  });
+  return res.data;
+}
+
+export async function fetchReviews(cadence?: string): Promise<ReviewNote[]> {
+  const res = await apiFetch<{ data: ReviewNote[] }>('/api/reviews', {
+    params: { cadence },
+    skipDataset: true,
+  });
+  return res.data;
+}
+
+export async function upsertReview(
+  cadence: ReviewNote['cadence'],
+  periodKey: string,
+  content: string,
+): Promise<ReviewNote> {
+  return apiFetch<ReviewNote>('/api/reviews', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cadence, period_key: periodKey, content }),
+    skipDataset: true,
+  });
+}

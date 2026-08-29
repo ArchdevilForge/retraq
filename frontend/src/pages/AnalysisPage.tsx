@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AnalysisInsights from '../components/AnalysisInsights';
 import EmptyDataset from '../components/EmptyDataset';
+import TagAnalysisPanel from '../components/analysis/TagAnalysisPanel';
+import ReviewPanel from '../components/analysis/ReviewPanel';
 import { useDataset } from '../context/DatasetContext';
 import { fetchTradesWithTotal } from '../services/api';
 import type { Trade } from '../services/api';
@@ -15,9 +17,9 @@ import {
   type TimeAnalysis,
 } from '../utils/tradeAnalysis';
 
-type TabId = 'overview' | 'behavior' | 'time' | 'risk';
+type TabId = 'overview' | 'behavior' | 'time' | 'risk' | 'tags' | 'review';
 
-const TAB_IDS: TabId[] = ['overview', 'behavior', 'time', 'risk'];
+const TAB_IDS: TabId[] = ['overview', 'behavior', 'time', 'risk', 'tags', 'review'];
 
 const PAGE_LIMIT = 2000;
 const MAX_PAGES = 5;
@@ -165,6 +167,8 @@ export default function AnalysisPage() {
     { id: 'behavior', label: '行为' },
     { id: 'time', label: '时间' },
     { id: 'risk', label: '风险' },
+    { id: 'tags', label: '标签' },
+    { id: 'review', label: '复盘' },
   ];
 
   if (datasetsLoading) {
@@ -184,18 +188,21 @@ export default function AnalysisPage() {
     );
   }
 
-  if (activeDatasetId == null) {
+  // 标签/复盘 tab 跨数据集聚合（默认 self），不依赖当前数据集（docs/PRODUCT.md §七）
+  const datasetDependent = tab !== 'tags' && tab !== 'review';
+
+  if (datasetDependent && activeDatasetId == null) {
     return <EmptyDataset title="导入数据后开始分析" />;
   }
 
-  if (loading) {
+  if (datasetDependent && loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <span className="oc-spinner oc-spinner--md" />
       </div>
     );
   }
-  if (error) {
+  if (datasetDependent && error) {
     return (
       <div className="p-4 text-[14px] oc-text-loss" role="alert">
         加载失败：{error}。请检查后端是否运行，或重新导入数据集。
@@ -496,6 +503,17 @@ export default function AnalysisPage() {
                 )}
               </Card>
             </div>
+          </div>
+        )}
+        {tab === 'tags' && (
+          <div id="analysis-panel-tags" role="tabpanel" aria-labelledby="analysis-tab-tags" className="flex flex-col gap-4">
+            <TagAnalysisPanel />
+          </div>
+        )}
+
+        {tab === 'review' && (
+          <div id="analysis-panel-review" role="tabpanel" aria-labelledby="analysis-tab-review" className="flex flex-col gap-4">
+            <ReviewPanel />
           </div>
         )}
       </div>
