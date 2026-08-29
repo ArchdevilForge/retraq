@@ -20,6 +20,8 @@ type Props = {
   liqPrice?: number | null;
   slPrice?: number | null;
   tpPrice?: number | null;
+  /** 图上拖线调整 止损/止盈（docs/PRODUCT.md §六）。 */
+  onDragPriceLine?: (title: string, price: number) => void;
   onSelectCompare?: (symbol: string) => void;
   onClearCompare?: () => void;
 };
@@ -51,6 +53,7 @@ export default function TrainingChart({
   liqPrice = null,
   slPrice = null,
   tpPrice = null,
+  onDragPriceLine,
   onSelectCompare,
   onClearCompare,
 }: Props) {
@@ -63,10 +66,10 @@ export default function TrainingChart({
     const theme = readChartTheme();
     const lines: ChartPriceLine[] = [];
     if (slPrice != null && Number.isFinite(slPrice)) {
-      lines.push({ price: slPrice, color: theme.down, title: '止损', dashed: true });
+      lines.push({ price: slPrice, color: theme.down, title: '止损', dashed: true, draggable: true });
     }
     if (tpPrice != null && Number.isFinite(tpPrice)) {
-      lines.push({ price: tpPrice, color: theme.up, title: '止盈', dashed: true });
+      lines.push({ price: tpPrice, color: theme.up, title: '止盈', dashed: true, draggable: true });
     }
     if (liqPrice != null && Number.isFinite(liqPrice)) {
       lines.push({ price: liqPrice, color: theme.down, title: '强平', dashed: true });
@@ -83,6 +86,7 @@ export default function TrainingChart({
       showTimeframeTabs={false}
       markers={seriesMarkers}
       priceLines={priceLines}
+      onDragPriceLine={onDragPriceLine}
       compare={
         compareSymbol
           ? { symbol: compareSymbol, klines: compareKlines ?? null, loading: compareLoading, error: compareError }

@@ -35,6 +35,8 @@ export type ChartPriceLine = {
   title: string;
   color: string;
   dashed?: boolean;
+  /** User-adjustable via vertical drag (e.g. 止损/止盈 bracket lines). */
+  draggable?: boolean;
 };
 
 export type ChartCompare = {
@@ -80,6 +82,8 @@ type Props = {
   onUserDrawing?: (kind: DrawingKind, payload: DrawingPoint[]) => void;
   /** Eraser pressed: caller decides persistence scope (falls back to in-memory clear). */
   onEraseDrawings?: () => void;
+  /** Drag-end of a draggable price line (图上拖线调 止损/止盈, docs/PRODUCT.md §六). */
+  onDragPriceLine?: (title: string, price: number) => void;
 };
 
 type ChartBundle = {
@@ -168,6 +172,7 @@ export default function ChartCanvas({
   drawings,
   onUserDrawing,
   onEraseDrawings,
+  onDragPriceLine,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -709,6 +714,112 @@ export default function ChartCanvas({
     document.addEventListener('fullscreenchange', onFs);
     return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
+
+  // ---- draggable price lines (图上拖线调 止损/止盈) ----
+  const dragRef = useRef<{ title: string; price: number } | null>(null);
+  const priceLinesRef = useRef<ChartPriceLine[]>([]);
+  useEffect(() => {
+    priceLinesRef.current = priceLines ?? [];
+  }, [priceLines]);
+
+  const paintDragPreview = useCallback(() => {
+    const canvas = rulerCanvasRef.current;
+    const container = mainRef.current;
+    const drag = dragRef.current;
+    if (!canvas || !container) return;
+    syncOverlayCanvasSize(canvas, container);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    clearRulerCanvas(canvas);
+    if (!drag) {
+      paintOverlay();
+      return;
+    }
+    const style = rulerStyleFromTheme(readChartTheme());
+    const y = seriesPriceToY(drag.price);
+    if (y == null) return;
+    ctx.strokeStyle = style.rulerStroke;
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(ctx.canvas.width, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = style.rulerLabelBg;
+    ctx.fillRect(4, y - 9, 76, 18);
+    ctx.fillStyle = style.rulerLabelText;
+    ctx.font = '11px var(--oc-font-mono, monospace)';
+    ctx.fillText(`${drag.title} ${drag.price.toFixed(4)}`, 8, y + 4);
+  }, [paintOverlay]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    // fresh mode → reset any hover cursor state from the previous mode
+    el.style.cursor = '';
+    const hitTest = (e: PointerEvent): ChartPriceLine | null => {
+      if (!onDragPriceLine) return null;
+      const series = mainApi.current?.series;
+      if (!series) return null;
+      const rect = el.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      let best: { line: ChartPriceLine; dist: number } | null = null;
+      for (const line of priceLinesRef.current) {
+        if (!line.draggable || !Number.isFinite(line.price)) continue;
+        const ly = series.priceToCoordinate(line.price);
+        if (ly == null) continue;
+        const dist = Math.abs(ly - y);
+        if (dist < 8 && (best == null || dist < best.dist)) best = { line, dist };
+      }
+      return best?.line ?? null;
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (drawMode !== 'none' || e.button !== 0) return;
+      const line = hitTest(e);
+      if (!line) return;
+      const series = mainApi.current?.series;
+      const price = series?.coordinateToPrice(e.clientY - el.getBoundingClientRect().top);
+      if (price == null || !Number.isFinite(price)) return;
+      dragRef.current = { title: line.title, price };
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const series = mainApi.current?.series;
+      if (!series) return;
+      if (dragRef.current) {
+        const price = series.coordinateToPrice(e.clientY - el.getBoundingClientRect().top);
+        if (price != null && Number.isFinite(price)) {
+          dragRef.current = { ...dragRef.current, price };
+          requestAnimationFrame(() => paintDragPreview());
+        }
+        e.preventDefault();
+        return;
+      }
+      // hover affordance
+      const near = hitTest(e) != null;
+      const want = near ? 'ns-resize' : '';
+      if (el.style.cursor !== want && drawMode === 'none') el.style.cursor = want;
+    };
+    const onPointerUp = () => {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      if (drag) {
+        paintOverlay();
+        if (onDragPriceLine) onDragPriceLine(drag.title, drag.price);
+      }
+    };
+    el.addEventListener('pointerdown', onPointerDown, { capture: true });
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    return () => {
+      el.removeEventListener('pointerdown', onPointerDown, { capture: true } as EventListenerOptions);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [drawMode, paintDragPreview, paintOverlay, onDragPriceLine]);
 
   const toggleFullscreen = () => {
     const el = shellRef.current;

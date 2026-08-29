@@ -664,6 +664,15 @@ export default function TrainPage() {
                 liqPrice={liqPrice}
                 slPrice={run.position?.stopLoss ?? null}
                 tpPrice={run.position?.takeProfit ?? null}
+                onDragPriceLine={(title, price) => {
+                  const pos = run.position;
+                  if (!pos) return;
+                  const nextSl = title === '止损' ? price : pos.stopLoss;
+                  const nextTp = title === '止盈' ? price : pos.takeProfit;
+                  const err = setStops(nextSl, nextTp);
+                  if (err) toast(err, 'error');
+                  else toast(`${title}已更新至 ${price.toFixed(4)}`, 'success');
+                }}
                 onSelectCompare={(s) => void setCompareSymbol(s)}
                 onClearCompare={() => void setCompareSymbol(null)}
               />
