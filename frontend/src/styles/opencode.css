@@ -623,11 +623,14 @@
   background: var(--background-base);
   color: var(--text-strong);
   box-shadow: none;
-  /* Tailwind preflight 清掉了 UA 的 margin:auto，弹窗需显式居中 */
+  /* Tailwind preflight 清掉了 UA 的 margin:auto，弹窗需显式居中。
+     max-* 是硬护栏：任何调用方高度/宽度都不能把弹窗推出视口（溢出即 bug）。 */
   position: fixed;
   inset: 0;
   margin: auto;
   height: fit-content;
+  max-height: calc(100dvh - 16px);
+  max-width: calc(100vw - 16px);
 }
 
 .oc-modal::backdrop {
@@ -644,6 +647,8 @@
 }
 
 .oc-modal__body {
+  min-height: 0;
+  overflow-y: auto;
   padding: 12px 14px;
 }
 

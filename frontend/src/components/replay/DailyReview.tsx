@@ -64,7 +64,7 @@ export default function DailyReview() {
       </button>
       {open ? (
         <div
-          className="panel-card fixed right-3 top-[64px] z-[60] w-[320px] space-y-2"
+          className="panel-card fixed right-3 top-[64px] z-[60] max-h-[min(70vh,420px)] w-[320px] space-y-2 overflow-y-auto"
           data-testid="daily-review-card"
         >
           <div className="panel-card-title flex items-center justify-between">
