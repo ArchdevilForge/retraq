@@ -94,7 +94,7 @@ class MasterService:
         db: Session,
         search: Optional[str] = None,
         has_positions_only: bool = True,
-        sort_by: str = "roi",
+        sort_by: str = "sharp_ratio",
         sort_order: str = "desc",
         page: int = 1,
         limit: int = 30,

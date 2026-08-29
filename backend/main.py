@@ -554,7 +554,7 @@ def get_stats_overview(request: Request, db: Session = Depends(get_db)):
 def list_masters(
     search: Optional[str] = None,
     has_positions_only: bool = Query(True),
-    sort_by: str = Query("roi"),
+    sort_by: str = Query("sharp_ratio", description="Default sharp_ratio; roi stays selectable"),
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     limit: int = Query(30, ge=1, le=200),

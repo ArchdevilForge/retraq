@@ -13,6 +13,7 @@ interface Props {
 type SortKey = 'roi' | 'pnl' | 'win_rate' | 'position_count' | 'mdd' | 'sharp_ratio';
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'sharp_ratio', label: '夏普比率' },
   { key: 'roi', label: '收益率' },
   { key: 'pnl', label: '总盈亏额' },
   { key: 'win_rate', label: '胜率' },
@@ -144,7 +145,8 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [hasPositionsOnly, setHasPositionsOnly] = useState(true);
-  const [sortBy, setSortBy] = useState<SortKey>('roi');
+  // 默认按夏普排序：ROI 是幸存者偏差最重的索引（docs/PRODUCT.md §五）
+  const [sortBy, setSortBy] = useState<SortKey>('sharp_ratio');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -81,6 +81,19 @@ def test_list_masters_filter_and_sort(client, db_session):
     assert res_search.json()["data"][0]["nickname"] == "ScalperKing"
 
 
+def test_list_masters_default_sort_is_sharp(client, db_session):
+    """默认排序不按 ROI（幸存者偏差），按夏普（docs/PRODUCT.md §五）。"""
+    _seed_sample_masters(db_session)
+    db_session.query(MasterTrader).filter(MasterTrader.id == "trader_001").update({"sharp_ratio": 1.0})
+    db_session.query(MasterTrader).filter(MasterTrader.id == "trader_002").update({"sharp_ratio": 3.0})
+    db_session.commit()
+
+    res = client.get("/api/masters", params={"has_positions_only": "false"})
+    assert res.status_code == 200
+    ids = [row["id"] for row in res.json()["data"]]
+    assert ids[0] == "trader_002"
+
+
 def test_master_detail(client, db_session):
     _seed_sample_masters(db_session)
 
