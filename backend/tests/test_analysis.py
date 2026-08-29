@@ -51,7 +51,7 @@ def test_by_setup_joins_annotations_and_excludes_master(client, db_session):
     res = client.get("/api/analysis/by-setup")
     assert res.status_code == 200
     body = res.json()
-    assert set(body.keys()) == {"self", "sim"}
+    assert set(body.keys()) == {"self", "sim", "master"}
     tags = {row["tag"]: row for row in body["self"]}
     assert tags["回踩"]["trade_count"] == 2
     assert tags["回踩"]["total_profit"] == 750.0

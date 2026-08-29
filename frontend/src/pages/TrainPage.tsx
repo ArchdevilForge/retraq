@@ -227,6 +227,27 @@ export default function TrainPage() {
     run?.position && mark ? liquidationDistance(run.account, run.position, mark) : null;
   const postmortem = run?.postmortem ?? null;
 
+  // 回放控制条快捷键：Shift+↓ 播放/暂停，Shift+→ 单步（docs/DESIGN.md §2.3）。
+  // 输入框聚焦时不劫持按键。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.shiftKey) return;
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowRight') return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+        return; // 输入中不劫持按键
+      }
+      e.preventDefault();
+      if (e.key === 'ArrowDown') {
+        setPlaying((p) => !p);
+      } else {
+        step();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setPlaying, step]);
+
   // Sync SL/TP fields from position levels only (not on qty/entry churn like add)
   const posSl = run?.position?.stopLoss;
   const posTp = run?.position?.takeProfit;

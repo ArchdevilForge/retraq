@@ -7,23 +7,10 @@ import {
   type ReviewNote,
 } from '../../services/api';
 import { useToast } from '../ToastHost';
+import { fmtDateTime } from '../../utils/format';
+import { periodKey } from '../../utils/review';
 
 type Props = { className?: string };
-
-function periodKey(cadence: ReviewChecklist['cadence'], now: Date): string {
-  const y = now.getFullYear();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  if (cadence === 'daily') return `${y}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  if (cadence === 'monthly') return `${y}-${pad(now.getMonth() + 1)}`;
-  // ISO week number
-  const target = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  const dayNum = (target.getUTCDay() + 6) % 7;
-  target.setUTCDate(target.getUTCDate() - dayNum + 3);
-  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-  const week =
-    1 + Math.round(((target.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
-  return `${target.getUTCFullYear()}-W${pad(week)}`;
-}
 
 function CadenceBlock({ checklist }: { checklist: ReviewChecklist }) {
   const { toast } = useToast();
@@ -129,9 +116,9 @@ function HistoryTimeline() {
             <span className="font-mono text-[12px] oc-text-faint">
               {n.period_key} · {n.cadence === 'daily' ? '日' : n.cadence === 'weekly' ? '周' : '月'}
             </span>
-            {n.updated_at ? (
-              <span className="font-mono text-[10px] oc-text-faint">{n.updated_at.slice(0, 16).replace('T', ' ')}</span>
-            ) : null}
+          {n.updated_at ? (
+            <span className="font-mono text-[10px] oc-text-faint">{fmtDateTime(Date.parse(n.updated_at))}</span>
+          ) : null}
           </div>
           <p className="mt-1 whitespace-pre-wrap leading-snug">{n.content}</p>
         </li>

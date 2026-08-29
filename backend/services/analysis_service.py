@@ -9,6 +9,7 @@ master datasets are never included.
 import json
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from models import SUBJECT_TRADE, Dataset, ReviewNote, Trade, TradeAnnotation
@@ -69,15 +70,21 @@ def _parse_tags(raw: Optional[str]) -> list[str]:
 
 
 def _owner_group(owner: str) -> str:
-    return "sim" if owner == "sim" else "self"
+    if owner == "sim":
+        return "sim"
+    if owner.startswith("master:"):
+        return "master"
+    return "self"
 
 
-def _scoped_trades(db: Session, include_sim: bool) -> list[tuple[Trade, str]]:
+def _scoped_trades(db: Session, include_sim: bool, include_master: bool = False) -> list[tuple[Trade, str]]:
     owners = ("self", "sim") if include_sim else ("self",)
+    # master:{trader_id} 数据集与 self/sim 互不混入，只在显式要求时并入
+    flt = or_(Dataset.owner.in_(owners), Dataset.owner.like("master:%")) if include_master else Dataset.owner.in_(owners)
     rows = (
         db.query(Trade, Dataset.owner)
         .join(Dataset, Trade.dataset_id == Dataset.id)
-        .filter(Dataset.owner.in_(owners))
+        .filter(flt)
         .all()
     )
     return [(trade, _owner_group(owner)) for trade, owner in rows]
@@ -99,11 +106,11 @@ def _annotations_by_trade(db: Session, trade_ids: list[int]) -> dict[int, TradeA
 
 class AnalysisService:
     @staticmethod
-    def by_setup(db: Session, include_sim: bool) -> dict:
+    def by_setup(db: Session, include_sim: bool, include_master: bool = False) -> dict:
         """Per setup tag: trade count, win rate, total profit — grouped by owner."""
-        scoped = _scoped_trades(db, include_sim)
+        scoped = _scoped_trades(db, include_sim, include_master)
         annotations = _annotations_by_trade(db, [int(t.id) for t, _ in scoped])
-        groups: dict[str, dict[str, dict[str, float]]] = {"self": {}, "sim": {}}
+        groups: dict[str, dict[str, dict[str, float]]] = {"self": {}, "sim": {}, "master": {}}
         for trade, owner in scoped:
             row = annotations.get(int(trade.id))
             if row is None:
@@ -128,11 +135,11 @@ class AnalysisService:
         }
 
     @staticmethod
-    def by_error(db: Session, include_sim: bool) -> dict:
+    def by_error(db: Session, include_sim: bool, include_master: bool = False) -> dict:
         """Per error tag: trade count and cumulative profit cost — grouped by owner."""
-        scoped = _scoped_trades(db, include_sim)
+        scoped = _scoped_trades(db, include_sim, include_master)
         annotations = _annotations_by_trade(db, [int(t.id) for t, _ in scoped])
-        groups: dict[str, dict[str, dict[str, float]]] = {"self": {}, "sim": {}}
+        groups: dict[str, dict[str, dict[str, float]]] = {"self": {}, "sim": {}, "master": {}}
         for trade, owner in scoped:
             row = annotations.get(int(trade.id))
             if row is None:
@@ -155,15 +162,15 @@ class AnalysisService:
         }
 
     @staticmethod
-    def r_distribution(db: Session, include_sim: bool) -> dict:
+    def r_distribution(db: Session, include_sim: bool, include_master: bool = False) -> dict:
         """R-multiple histogram. R = profit / risk, risk = margin × |entry-stop| / entry.
 
         Trades without a planned stop (or margin) cannot be risk-normalized and are
         reported under 'without_stop' instead of being silently dropped.
         """
-        scoped = _scoped_trades(db, include_sim)
+        scoped = _scoped_trades(db, include_sim, include_master)
         annotations = _annotations_by_trade(db, [int(t.id) for t, _ in scoped])
-        groups: dict[str, dict] = {"self": {}, "sim": {}}
+        groups: dict[str, dict] = {"self": {}, "sim": {}, "master": {}}
         for owner in groups:
             groups[owner] = {
                 "buckets": [{"bucket": name, "count": 0} for name, _, _ in R_BUCKETS],
@@ -196,11 +203,11 @@ class AnalysisService:
         return groups
 
     @staticmethod
-    def discipline(db: Session, include_sim: bool) -> dict:
+    def discipline(db: Session, include_sim: bool, include_master: bool = False) -> dict:
         """纪律遵守率：已标注交易中无错误分类的占比；未标注单独计数。"""
-        scoped = _scoped_trades(db, include_sim)
+        scoped = _scoped_trades(db, include_sim, include_master)
         annotations = _annotations_by_trade(db, [int(t.id) for t, _ in scoped])
-        groups: dict[str, dict[str, int]] = {"self": {}, "sim": {}}
+        groups: dict[str, dict[str, int]] = {"self": {}, "sim": {}, "master": {}}
         for owner in groups:
             groups[owner] = {"annotated": 0, "clean": 0, "with_error": 0, "unannotated": 0}
         for trade, owner in scoped:

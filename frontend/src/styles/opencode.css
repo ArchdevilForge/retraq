@@ -1343,33 +1343,36 @@
 }
 
 /* ---- Dark theme ---- */
+/* 面板底色对齐 docs/DESIGN.md §3 色值表：base #141212 / weak #201d1d，
+   raised/input 层落到规范的面板底色 2 #282525。 */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --background-base: #201d1d;
-  --background-weak: #302c2c;
-  --background-strong: #201d1d;
+  --background-base: #141212;
+  --background-weak: #201d1d;
+  --background-strong: #141212;
   --background-stronger: #1a1818;
-  --surface-dark: #201d1d;
-  --surface-dark-elevated: #302c2c;
+  --surface-dark: #141212;
+  --surface-dark-elevated: #201d1d;
 
   --surface-base-hover: rgba(255, 255, 255, 0.05);
   --surface-base-active: rgba(255, 255, 255, 0.09);
   --surface-raised-base-hover: rgba(255, 255, 255, 0.05);
   --surface-raised-base-active: rgba(255, 255, 255, 0.08);
-  --surface-raised-stronger-non-alpha: #201d1d;
-  --surface-float-base: #302c2c;
+  --surface-raised-stronger-non-alpha: #282525;
+  --surface-float-base: #201d1d;
   --surface-interactive-weak: rgba(0, 122, 255, 0.14);
   --surface-success-base: rgba(48, 209, 88, 0.16);
   --surface-success-weak: rgba(48, 209, 88, 0.1);
   --surface-critical-base: rgba(255, 59, 48, 0.16);
-  --surface-critical-weak: rgba(255, 59, 48, 0.1);
+  --surface-critical-weak: rgba(48, 209, 88, 0.1);
   --surface-warning-base: rgba(255, 159, 10, 0.16);
   --surface-brand-base: #fdfcfc;
 
-  --input-base: #302c2c;
-  --input-hover: #3a3636;
-  --input-focus: #302c2c;
+  --input-base: #282525;
+  --input-hover: #302c2c;
+  --input-focus: #282525;
+
 
   --text-strong: #fdfcfc;
   --text-base: #b8b6b6;
@@ -1390,8 +1393,8 @@
 
   --button-primary-base: #fdfcfc;
   --button-primary-hover: #ffffff;
-  --button-secondary-base: #302c2c;
-  --button-secondary-hover: #3a3636;
+  --button-secondary-base: #282525;
+  --button-secondary-hover: #302c2c;
 
   --icon-base: #9a9898;
   --icon-strong-base: #fdfcfc;
@@ -1403,7 +1406,7 @@
   --oc-profit: #30d158;
   --oc-loss: #ff3b30;
 
-  --oc-chart-bg: #201d1d;
+  --oc-chart-bg: #141212;
   --oc-chart-fg: #fdfcfc;
   --oc-chart-text: #9a9898;
   --oc-chart-grid: rgba(255, 255, 255, 0.08);
@@ -1413,7 +1416,7 @@
   --oc-chart-volume-down: rgba(255, 59, 48, 0.55);
   --oc-chart-hline: #9a9898;
   --oc-chart-chrome-border: rgba(255, 255, 255, 0.14);
-  --oc-chart-chrome-hover: #302c2c;
+  --oc-chart-chrome-hover: #282525;
   --oc-chart-chrome-fg: #fdfcfc;
   --oc-chart-ruler-fill: rgba(253, 252, 252, 0.1);
   --oc-chart-ruler-stroke: rgba(253, 252, 252, 0.72);

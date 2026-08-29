@@ -594,32 +594,34 @@ export interface DisciplineStat {
   unannotated: number;
 }
 
-export type OwnerGroup<T> = { self: T; sim: T };
+export type OwnerGroup<T> = { self: T; sim: T; master?: T };
 
-export async function fetchSetupStats(includeSim: boolean): Promise<OwnerGroup<SetupStat[]>> {
+export type AnalysisView = 'self' | 'sim' | 'master';
+
+export async function fetchSetupStats(includeSim: boolean, includeMaster = false): Promise<OwnerGroup<SetupStat[]>> {
   return apiFetch<OwnerGroup<SetupStat[]>>('/api/analysis/by-setup', {
-    params: { include_sim: includeSim },
+    params: { include_sim: includeSim, include_master: includeMaster },
     skipDataset: true,
   });
 }
 
-export async function fetchErrorStats(includeSim: boolean): Promise<OwnerGroup<ErrorStat[]>> {
+export async function fetchErrorStats(includeSim: boolean, includeMaster = false): Promise<OwnerGroup<ErrorStat[]>> {
   return apiFetch<OwnerGroup<ErrorStat[]>>('/api/analysis/by-error', {
-    params: { include_sim: includeSim },
+    params: { include_sim: includeSim, include_master: includeMaster },
     skipDataset: true,
   });
 }
 
-export async function fetchRDistribution(includeSim: boolean): Promise<OwnerGroup<RDistribution>> {
+export async function fetchRDistribution(includeSim: boolean, includeMaster = false): Promise<OwnerGroup<RDistribution>> {
   return apiFetch<OwnerGroup<RDistribution>>('/api/analysis/r-distribution', {
-    params: { include_sim: includeSim },
+    params: { include_sim: includeSim, include_master: includeMaster },
     skipDataset: true,
   });
 }
 
-export async function fetchDiscipline(includeSim: boolean): Promise<OwnerGroup<DisciplineStat>> {
+export async function fetchDiscipline(includeSim: boolean, includeMaster = false): Promise<OwnerGroup<DisciplineStat>> {
   return apiFetch<OwnerGroup<DisciplineStat>>('/api/analysis/discipline', {
-    params: { include_sim: includeSim },
+    params: { include_sim: includeSim, include_master: includeMaster },
     skipDataset: true,
   });
 }

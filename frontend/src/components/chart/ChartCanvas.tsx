@@ -18,6 +18,7 @@ import {
   rulerStyleFromTheme,
 } from '../../utils/chartTheme';
 import { TIMEFRAME_MS } from '../../utils/training';
+import { fmtDateTime } from '../../utils/format';
 import {
   clearRulerCanvas,
   drawRulerOnCanvas,
@@ -84,6 +85,9 @@ type Props = {
   onEraseDrawings?: () => void;
   /** Drag-end of a draggable price line (图上拖线调 止损/止盈, docs/PRODUCT.md §六). */
   onDragPriceLine?: (title: string, price: number) => void;
+  /** 复盘模式自由时间游标：有回调即可拖动，游标线常驻（docs/DESIGN.md §2.3）。 */
+  cursorTime?: number | null;
+  onCursorDrag?: (timeSec: number) => void;
 };
 
 type ChartBundle = {
@@ -173,6 +177,8 @@ export default function ChartCanvas({
   onUserDrawing,
   onEraseDrawings,
   onDragPriceLine,
+  cursorTime,
+  onCursorDrag,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -355,6 +361,32 @@ export default function ChartCanvas({
 
     const step = Math.floor(TIMEFRAME_MS[timeframeRef.current] / 1000);
     const rulerStyle = rulerStyleFromTheme(readChartTheme());
+
+    // 自由时间游标（§2.3）：细竖线 + 底部位置标签，任何缩放平移下常驻可见
+    const ct = cursorTimeRef.current;
+    if (ct != null && cursorCbRef.current) {
+      const chart = mainApi.current?.chart;
+      const x = chart?.timeScale().timeToCoordinate(ct as Time);
+      if (x != null && Number.isFinite(x)) {
+        ctx.strokeStyle = rulerStyle.rulerStroke;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, ctx.canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const label = fmtDateTime(ct * 1000);
+        ctx.font = '11px var(--oc-font-mono, monospace)';
+        const w = ctx.measureText(label).width + 12;
+        const lx = Math.min(Math.max(4, x - w / 2), ctx.canvas.width - w - 4);
+        ctx.fillStyle = rulerStyle.rulerLabelBg;
+        ctx.fillRect(lx, ctx.canvas.height - 20, w, 16);
+        ctx.fillStyle = rulerStyle.rulerLabelText;
+        ctx.fillText(label, lx + 6, ctx.canvas.height - 8);
+      }
+    }
+
     const pair = rulerResultRef.current;
     if (pair) {
       const a = remapRulerCorner(pair.a);
@@ -400,6 +432,7 @@ export default function ChartCanvas({
 
   // repaint persisted drawings whenever the list (or theme they're drawn in) changes
   useEffect(() => {
+    paintOverlayRef.current = paintOverlay;
     paintOverlay();
   }, [drawings, chartTheme, paintOverlay]);
 
@@ -446,7 +479,7 @@ export default function ChartCanvas({
         width: mainRef.current.clientWidth,
         height: mainRef.current.clientHeight,
       });
-      if (rulerResultRef.current || rulerCornerRef.current) paintOverlay();
+      if (rulerResultRef.current || rulerCornerRef.current || cursorTimeRef.current != null) paintOverlay();
       syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
     });
     ro.observe(mainRef.current);
@@ -718,6 +751,16 @@ export default function ChartCanvas({
   // ---- draggable price lines (图上拖线调 止损/止盈) ----
   const dragRef = useRef<{ title: string; price: number } | null>(null);
   const priceLinesRef = useRef<ChartPriceLine[]>([]);
+  // ---- 复盘自由时间游标（§2.3）：线常驻，可横向拖动 ----
+  const cursorTimeRef = useRef<number | null>(null);
+  const cursorDragRef = useRef(false);
+  const cursorCbRef = useRef(onCursorDrag);
+  const paintOverlayRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    cursorTimeRef.current = cursorTime ?? null;
+    cursorCbRef.current = onCursorDrag;
+    paintOverlayRef.current?.();
+  }, [cursorTime, onCursorDrag]);
   useEffect(() => {
     priceLinesRef.current = priceLines ?? [];
   }, [priceLines]);
@@ -775,8 +818,27 @@ export default function ChartCanvas({
       return best?.line ?? null;
     };
 
+    const cursorX = (): number | null => {
+      const ct = cursorTimeRef.current;
+      const chart = mainApi.current?.chart;
+      if (ct == null || !cursorCbRef.current || !chart) return null;
+      const x = chart.timeScale().timeToCoordinate(ct as Time);
+      return x != null && Number.isFinite(x) ? x : null;
+    };
+
     const onPointerDown = (e: PointerEvent) => {
       if (drawMode !== 'none' || e.button !== 0) return;
+      // window 级捕获：浮层面板盖住图表时按下不属于图表（目标不在子树内）
+      const t = e.target as Node | null;
+      if (!t || !el.contains(t)) return;
+      // 时间游标优先：命中 ±6px 竖线即开始拖动（§2.3 自由游标）
+      const cx = cursorX();
+      if (cx != null && Math.abs(e.clientX - el.getBoundingClientRect().left - cx) < 6) {
+        cursorDragRef.current = true;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const line = hitTest(e);
       if (!line) return;
       const series = mainApi.current?.series;
@@ -789,6 +851,13 @@ export default function ChartCanvas({
     const onPointerMove = (e: PointerEvent) => {
       const series = mainApi.current?.series;
       if (!series) return;
+      const chart = mainApi.current?.chart;
+      if (cursorDragRef.current) {
+        const t = chart?.timeScale().coordinateToTime(e.clientX - el.getBoundingClientRect().left);
+        if (t != null && Number.isFinite(Number(t))) cursorCbRef.current?.(Number(t));
+        e.preventDefault();
+        return;
+      }
       if (dragRef.current) {
         const price = series.coordinateToPrice(e.clientY - el.getBoundingClientRect().top);
         if (price != null && Number.isFinite(price)) {
@@ -799,11 +868,17 @@ export default function ChartCanvas({
         return;
       }
       // hover affordance
-      const near = hitTest(e) != null;
-      const want = near ? 'ns-resize' : '';
+      const cx = cursorX();
+      const nearCursor = cx != null && Math.abs(e.clientX - el.getBoundingClientRect().left - cx) < 6;
+      const near = nearCursor || hitTest(e) != null;
+      const want = near ? (nearCursor ? 'ew-resize' : 'ns-resize') : '';
       if (el.style.cursor !== want && drawMode === 'none') el.style.cursor = want;
     };
     const onPointerUp = () => {
+      if (cursorDragRef.current) {
+        cursorDragRef.current = false;
+        return;
+      }
       const drag = dragRef.current;
       dragRef.current = null;
       if (drag) {
@@ -811,11 +886,11 @@ export default function ChartCanvas({
         if (onDragPriceLine) onDragPriceLine(drag.title, drag.price);
       }
     };
-    el.addEventListener('pointerdown', onPointerDown, { capture: true });
+    window.addEventListener('pointerdown', onPointerDown, { capture: true });
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     return () => {
-      el.removeEventListener('pointerdown', onPointerDown, { capture: true } as EventListenerOptions);
+      window.removeEventListener('pointerdown', onPointerDown, { capture: true } as EventListenerOptions);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };

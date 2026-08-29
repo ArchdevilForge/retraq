@@ -15,10 +15,18 @@ export function fmtPct(v: number | null | undefined): string {
 }
 
 export function fmtDateTime(ms: number): string {
+  // D§9：严格 Asia/Shanghai (UTC+8)，格式形如 2026-08-27 20:30。
   return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  }).format(ms);
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+    .format(ms)
+    .replace(/\//g, '-');
 }
 
 export function fmtDurationMs(ms: number): string {

@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
 import TradeList from '../components/TradeList';
+import DailyReview from '../components/replay/DailyReview';
 import MasterList from '../components/masters/MasterList';
 import MasterDetailPanel from '../components/masters/MasterDetailPanel';
 import { useDataset } from '../context/DatasetContext';
-import type { MasterPosition, MasterTrader, Trade } from '../services/api';
+import { fetchTradesWithTotal, type MasterPosition, type MasterTrader, type Trade } from '../services/api';
+import { fmtMoney } from '../utils/format';
 
 type ReplaySource = 'mine' | 'masters';
 
@@ -46,6 +48,39 @@ export default function ReplayPage() {
   );
   const activeTrade = source === 'mine' ? selectedTrade : masterTrade;
   const activeSymbol = activeTrade?.symbol ?? symbol;
+
+  // P§五.2 对照：高手持仓时段内「我的」同期持仓，叠加在同一张图上
+  const [selfCompareTrades, setSelfCompareTrades] = useState<Trade[] | null>(null);
+  const [compareOpen, setCompareOpen] = useState(true);
+  const compareKey = `${source}:${activeTrade?.id ?? '-'}:${activeTrade?.symbol ?? ''}`;
+  useEffect(() => {
+    if (source !== 'masters' || !activeTrade || !activeTrade.symbol) {
+      setSelfCompareTrades(null);
+      return;
+    }
+    let ignore = false;
+    setSelfCompareTrades(null);
+    const windowBufferMs = 2 * 60 * 60 * 1000;
+    fetchTradesWithTotal({
+      symbol: activeTrade.symbol,
+      start_date: activeTrade.entry_time - windowBufferMs,
+      end_date: (activeTrade.exit_time ?? activeTrade.entry_time) + windowBufferMs,
+    })
+      .then(({ trades }) => {
+        if (!ignore) setSelfCompareTrades(trades);
+      })
+      .catch(() => {
+        if (!ignore) setSelfCompareTrades(null);
+      });
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareKey]);
+  const selfComparePnl = useMemo(
+    () => (selfCompareTrades ?? []).reduce((sum, t) => sum + (t.profit ?? 0), 0),
+    [selfCompareTrades],
+  );
 
   const handleSymbolChange = useCallback((nextSymbol: string) => {
     setSymbol(nextSymbol);
@@ -99,7 +134,12 @@ export default function ReplayPage() {
         {/* Hero chart — the background layer (docs/DESIGN.md §2.1) */}
         <div className="oc-canvas__chart">
           {activeSymbol && !noDataset ? (
-            <ChartManager symbol={activeSymbol} selectedTrade={activeTrade} noFills={source === 'masters'} />
+            <ChartManager
+              symbol={activeSymbol}
+              selectedTrade={activeTrade}
+              noFills={source === 'masters'}
+              selfCompareTrades={source === 'masters' && compareOpen ? selfCompareTrades : null}
+            />
           ) : noDataset ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
               <EmptyDataset />
@@ -179,6 +219,29 @@ export default function ReplayPage() {
             详情
           </button>
         ) : null}
+
+        {/* P§五.2 同期「他 vs 我」对照 chip */}
+        {source === 'masters' && activeTrade && selfCompareTrades ? (
+          <div
+            className="panel-card absolute left-1/2 top-[62px] z-20 flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-[12px]"
+            data-testid="self-compare-chip"
+          >
+            <span className="oc-text-faint">同期我的持仓</span>
+            <span className={`font-mono tabular-nums ${selfComparePnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}`}>
+              {selfCompareTrades.length} 笔 · {selfComparePnl >= 0 ? '+' : ''}{fmtMoney(selfComparePnl)} U
+            </span>
+            <button
+              type="button"
+              className="oc-btn oc-btn--sm oc-btn--secondary"
+              onClick={() => setCompareOpen((v) => !v)}
+            >
+              {compareOpen ? '隐藏对照' : '显示对照'}
+            </button>
+          </div>
+        ) : null}
+
+        {/* 常驻「今日复盘」入口（docs/DESIGN.md §6） */}
+        <DailyReview />
       </div>
     </div>
   );

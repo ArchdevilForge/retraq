@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Database, RefreshCw, Upload } from 'lucide-react';
+import { ChevronDown, Database, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { useDataset } from '../context/DatasetContext';
-import { importTrades, runBinanceSync } from '../services/api';
+import { deleteDataset, importTrades, runBinanceSync } from '../services/api';
 import { useToast } from './ToastHost';
 
 function truncateMiddle(name: string, max = 36): string {
@@ -22,7 +22,15 @@ export default function DatasetPicker() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  // 两步确认删除（§10 禁 confirm()）：点一次进入待确认，3 秒内再点才真删。
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 320 });
+
+  useEffect(() => {
+    if (confirmDeleteId == null) return;
+    const t = window.setTimeout(() => setConfirmDeleteId(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [confirmDeleteId]);
 
   const active = datasets.find((p) => p.id === activeDatasetId);
   const emptyLabel = error ? '表格加载失败' : '无表格';
@@ -117,6 +125,20 @@ export default function DatasetPicker() {
     }
   };
 
+  const onDeleteDataset = async (id: number) => {
+    try {
+      await deleteDataset(id);
+      toast('数据集已删除', 'success');
+      notifyTradesChanged();
+      // refreshDatasets repairs the active id (falls back to the first row).
+      await refreshDatasets();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '删除失败', 'error');
+    } finally {
+      setConfirmDeleteId(null);
+    }
+  };
+
   const listPanel =
     open &&
     datasets.length > 0 &&
@@ -137,11 +159,12 @@ export default function DatasetPicker() {
                 <ul role="group" aria-label={label}>
                   {items.map((p) => {
                     const selected = p.id === activeDatasetId;
+                    const confirming = p.id === confirmDeleteId;
                     return (
-                      <li key={p.id} role="option" aria-selected={selected}>
+                      <li key={p.id} role="option" aria-selected={selected} className="flex items-stretch">
                         <button
                           type="button"
-                          className={`oc-dropdown__item${selected ? ' oc-dropdown__item--selected' : ''}`}
+                          className={`oc-dropdown__item flex-1${selected ? ' oc-dropdown__item--selected' : ''}`}
                           title={p.name}
                           onClick={() => {
                             setActiveDatasetId(p.id);
@@ -152,6 +175,19 @@ export default function DatasetPicker() {
                             className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
                           />
                           <span className="min-w-0 break-all leading-snug">{p.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`oc-icon-btn oc-icon-btn--sm oc-icon-btn--secondary m-1 mr-2 shrink-0${confirming ? ' oc-text-loss' : ''}`}
+                          aria-label={confirming ? `确认删除 ${p.name}` : `删除数据集 ${p.name}`}
+                          title={confirming ? '再点一次确认删除（数据集与全部成交/持仓）' : '删除数据集'}
+                          onClick={() => (confirming ? void onDeleteDataset(p.id) : setConfirmDeleteId(p.id))}
+                        >
+                          {confirming ? (
+                            <span className="text-[10px] leading-none">确认</span>
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          )}
                         </button>
                       </li>
                     );

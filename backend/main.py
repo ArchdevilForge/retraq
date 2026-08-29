@@ -235,23 +235,23 @@ def review_checklists():
 
 
 @app.get("/api/analysis/by-setup")
-def analysis_by_setup(include_sim: bool = False, db: Session = Depends(get_db)):
-    return analysis_service.by_setup(db, include_sim)
+def analysis_by_setup(include_sim: bool = False, include_master: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.by_setup(db, include_sim, include_master)
 
 
 @app.get("/api/analysis/by-error")
-def analysis_by_error(include_sim: bool = False, db: Session = Depends(get_db)):
-    return analysis_service.by_error(db, include_sim)
+def analysis_by_error(include_sim: bool = False, include_master: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.by_error(db, include_sim, include_master)
 
 
 @app.get("/api/analysis/r-distribution")
-def analysis_r_distribution(include_sim: bool = False, db: Session = Depends(get_db)):
-    return analysis_service.r_distribution(db, include_sim)
+def analysis_r_distribution(include_sim: bool = False, include_master: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.r_distribution(db, include_sim, include_master)
 
 
 @app.get("/api/analysis/discipline")
-def analysis_discipline(include_sim: bool = False, db: Session = Depends(get_db)):
-    return analysis_service.discipline(db, include_sim)
+def analysis_discipline(include_sim: bool = False, include_master: bool = False, db: Session = Depends(get_db)):
+    return analysis_service.discipline(db, include_sim, include_master)
 
 
 @app.get("/api/reviews")

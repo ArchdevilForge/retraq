@@ -147,11 +147,42 @@ function buildTradeOverlay(
   return { markers, priceLines };
 }
 
+/** 同期「我的」持仓 → 圆点标注（与高手箭头区分），时间升序合并（P§五.2）。 */
+function buildSelfCompareMarkers(trades: Trade[], timeframe: Timeframe): SeriesMarker<Time>[] {
+  const theme = readChartTheme();
+  const stepSec = Math.floor(TIMEFRAME_MS[timeframe] / 1000);
+  const align = (ms: number) =>
+    stepSec > 0 ? ((Math.floor(ms / 1000 / stepSec) * stepSec) as Time) : (Math.floor(ms / 1000) as Time);
+  const out: SeriesMarker<Time>[] = [];
+  for (const t of trades) {
+    const long = t.direction === 'long';
+    out.push({
+      time: align(t.entry_time),
+      position: long ? 'belowBar' : 'aboveBar',
+      shape: 'circle',
+      color: long ? theme.up : theme.down,
+      text: '我开',
+    });
+    if (t.exit_time != null) {
+      out.push({
+        time: align(t.exit_time),
+        position: long ? 'aboveBar' : 'belowBar',
+        shape: 'circle',
+        color: (t.profit ?? 0) >= 0 ? theme.up : theme.down,
+        text: '我平',
+      });
+    }
+  }
+  return out.sort((a, b) => Number(a.time) - Number(b.time));
+}
+
 interface Props {
   symbol: string;
   selectedTrade: Trade | null;
   /** master 交割单等无 fill 数据的持仓，跳过成交明细请求。 */
   noFills?: boolean;
+  /** 同段行情「他 vs 我」：叠加到同一张图上的我的同期持仓（P§五.2）。 */
+  selfCompareTrades?: Trade[] | null;
 }
 
 /** 不请求尚未收盘的 K 线，否则缓存永远算不上覆盖，每次都回源交易所。仅可在 effect 内调用。 */
@@ -161,7 +192,7 @@ function clampRangeToClosed(range: { start: number; end: number } | null, tfMs: 
   return { start: range.start, end: Math.max(range.start, Math.min(range.end, lastClosedEnd)) };
 }
 
-function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
+function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrades }: Props) {
   const { activeDatasetId } = useDataset();
   const { toast } = useToast();
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('15m');
@@ -176,6 +207,8 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
   const [compareSymbol, setCompareSymbol] = useState<string | null>(null);
   const [symbolOptions, setSymbolOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
+  // 复盘自由时间游标（§2.3）：默认停在最新收盘 bar，可整体拖动
+  const [cursorSec, setCursorSec] = useState<number | null>(null);
 
   const rangeForTrade = useMemo(() => {
     if (!selectedTrade) return null;
@@ -200,6 +233,18 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
     const rawEndSec = Math.floor((endBaseMs + TRADE_VIEW_BUFFER_BARS * tfMs) / 1000);
     return { from: align(rawStartSec, 'floor') as Time, to: align(rawEndSec, 'ceil') as Time };
   }, [activeTimeframe, selectedTrade]);
+
+  // 复盘自由时间游标（§2.3）：默认停在可见范围内的最后一根 bar；换符号重置
+  useEffect(() => {
+    setCursorSec(null);
+  }, [selectedTrade?.symbol, symbol]);
+  useEffect(() => {
+    if (cursorSec != null || mainKlines.length === 0) return;
+    const vr = visibleRange;
+    const inView = vr ? mainKlines.filter((k) => k.time >= Number(vr.from) && k.time <= Number(vr.to)) : [];
+    const last = inView.length ? inView[inView.length - 1] : mainKlines[mainKlines.length - 1];
+    setCursorSec(last.time);
+  }, [mainKlines, cursorSec, visibleRange]);
 
   useEffect(() => {
     const tradeId = selectedTrade?.id;
@@ -336,10 +381,24 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
       .catch(() => toast('画线删除失败', 'error'));
   }, [drawings, toast]);
 
+  useEffect(() => {
+    setCursorSec((cur) => {
+      if (cur != null || mainKlines.length === 0) return cur;
+      return mainKlines[mainKlines.length - 1].time;
+    });
+  }, [mainKlines]);
+
   const overlay = useMemo(
     () => (selectedTrade ? buildTradeOverlay(selectedTrade, tradeFills, activeTimeframe) : { markers: [], priceLines: [] }),
     [selectedTrade, tradeFills, activeTimeframe],
   );
+
+  // 他我对照：self 圆点与高手箭头按时间归并（P§五.2）
+  const mergedMarkers = useMemo(() => {
+    const mine = selfCompareTrades?.length ? buildSelfCompareMarkers(selfCompareTrades, activeTimeframe) : [];
+    if (mine.length === 0) return overlay.markers;
+    return [...overlay.markers, ...mine].sort((a, b) => Number(a.time) - Number(b.time));
+  }, [overlay, selfCompareTrades, activeTimeframe]);
 
   const status = selectedTrade ? (
     <>
@@ -365,7 +424,7 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
       loading={mainKlineLoading}
       error={mainKlineError}
       status={status}
-      markers={overlay.markers}
+      markers={mergedMarkers}
       priceLines={overlay.priceLines}
       visibleRange={visibleRange}
       drawings={drawings}
@@ -376,6 +435,8 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
       onSelectCompare={setCompareSymbol}
       onClearCompare={() => setCompareSymbol(null)}
       onTimeframeChange={setActiveTimeframe}
+      cursorTime={cursorSec}
+      onCursorDrag={setCursorSec}
     />
   );
 }
