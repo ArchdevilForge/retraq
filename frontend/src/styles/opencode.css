@@ -623,6 +623,11 @@
   background: var(--background-base);
   color: var(--text-strong);
   box-shadow: none;
+  /* Tailwind preflight 清掉了 UA 的 margin:auto，弹窗需显式居中 */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
 }
 
 .oc-modal::backdrop {
