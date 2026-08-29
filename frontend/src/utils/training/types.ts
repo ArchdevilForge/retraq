@@ -20,6 +20,8 @@ export type VirtualAccount = {
 export type SimPosition = {
   direction: Direction;
   qty: number;
+  /** Cycle's original size; partial closes keep it for the ClosedCycle record. */
+  openedQty: number;
   entryPrice: number;
   leverage: number;
   stopLoss?: number | null;
@@ -30,6 +32,38 @@ export type SimPosition = {
   cycleFees: number;
   /** Bar time of the first entry in this cycle; anchors the 最大安全仓位 lookback. */
   openedAt: number;
+};
+
+/** Working order waiting for future bars to trigger/fill (docs/PRODUCT.md §六). */
+export type PendingOrderKind = 'limit' | 'stop' | 'stop_limit';
+
+export type PendingOrder = {
+  kind: PendingOrderKind;
+  direction: Direction;
+  /** Trigger price: fill level for limit, trigger for stop/stop_limit. */
+  price: number;
+  /** Limit price of a stop_limit order after the trigger fires. */
+  limitPrice?: number | null;
+  marginUsdt: number;
+  leverage: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+};
+
+/** A fully closed round-trip, kept for 落库 (docs/PRODUCT.md §六). */
+export type ClosedCycle = {
+  direction: Direction;
+  entryPrice: number;
+  exitPrice: number;
+  qty: number;
+  leverage: number;
+  /** Net profit of the cycle (partials included, fees excluded). */
+  profit: number;
+  fees: number;
+  entryTime: number;
+  exitTime: number;
+  margin: number;
+  reason: string;
 };
 
 export type RunStats = {
@@ -71,6 +105,8 @@ export type TrainingRun = {
   bars: Kline[];
   compareBars: Kline[] | null;
   position: SimPosition | null;
+  /** Working order (only while flat). */
+  pendingOrder: PendingOrder | null;
   revealed: boolean;
   locked: boolean;
   /** Set when the run ended by 爆仓 rather than by reveal or reaching the end. */
@@ -78,6 +114,8 @@ export type TrainingRun = {
   postmortem: Postmortem | null;
   stats: RunStats;
   markers: SimMarker[];
+  /** Closed round-trips for 落库. */
+  closedCycles: ClosedCycle[];
 };
 
 export const DEFAULT_START_EQUITY = 1000;
@@ -86,7 +124,8 @@ export const DEFAULT_MARGIN_FRACTION = 0.25;
 export const DEFAULT_LEVERAGE = 10;
 /** Maintenance margin rate on notional; the 爆仓 threshold. */
 export const MAINTENANCE_MARGIN_RATE = 0.005;
-export const DEFAULT_FEE_RATE = 0.0005;
+/** 手续费默认 0（docs/PRODUCT.md §六）：真实复刻优先级让位给可玩性，面板可改。 */
+export const DEFAULT_FEE_RATE = 0;
 export const DEFAULT_CONTEXT_BARS = 50;
 /** Bars that must stay ahead of the cursor for a run to be playable. */
 export const MIN_DECISION_BARS = 20;

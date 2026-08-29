@@ -173,6 +173,62 @@ class ReviewUpsert(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class TrainingSave(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=32)
+    timeframe: str = Field(..., min_length=1, max_length=8)
+    start_equity: float = Field(..., gt=0)
+    realized_pnl: float
+    fees: float
+    trades: list[dict]
+
+
+@app.post("/api/train/save")
+def save_training_session(body: TrainingSave, db: Session = Depends(get_db)):
+    """落库一次训练会话：闭环交易进 owner=sim 数据集，可再进复盘与分析（docs/PRODUCT.md §六）。"""
+    if not body.trades:
+        raise HTTPException(400, "本局没有任何闭环交易，无需保存")
+
+    now = pd.Timestamp.now(tz="Asia/Shanghai")
+    ds_name = f"[训练] {now.strftime('%Y-%m-%d %H:%M')} {body.symbol} {body.timeframe}"[:128]
+    existing = db.query(Dataset).filter(Dataset.name == ds_name).first()
+    if existing:
+        raise HTTPException(400, "该会话已保存过，请勿重复保存")
+    ds = Dataset(name=ds_name, owner="sim")
+    db.add(ds)
+    db.flush()
+
+    rows = []
+    for t in body.trades:
+        try:
+            rows.append(
+                Trade(
+                    dataset_id=ds.id,
+                    symbol=str(t["symbol"]),
+                    direction=str(t["direction"]),
+                    leverage=float(t.get("leverage") or 1.0),
+                    entry_price=float(t["entry_price"]),
+                    exit_price=float(t["exit_price"]),
+                    profit=float(t["profit"]),
+                    profit_rate=float(t["profit"]) / float(t["margin"]) if float(t.get("margin") or 0) > 0 else None,
+                    margin=float(t["margin"]) if t.get("margin") else None,
+                    entry_time=int(t["entry_time"]),
+                    exit_time=int(t["exit_time"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(400, "训练交易记录字段无效")
+    db.add_all(rows)
+    db.commit()
+    return {
+        "success": True,
+        "dataset_id": ds.id,
+        "dataset_name": ds_name,
+        "trade_count": len(rows),
+        "realized_pnl": body.realized_pnl,
+        "fees": body.fees,
+    }
+
+
 @app.get("/api/analysis/checklists")
 def review_checklists():
     return {"data": [{"cadence": k, "label": v["label"], "questions": v["questions"]} for k, v in REVIEW_CHECKLISTS.items()]}

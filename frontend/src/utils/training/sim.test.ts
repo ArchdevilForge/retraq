@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Kline } from '../../services/api';
 import type { Ledger, SimResult } from './sim';
 import {
+  applyBarAdvance,
+  cancelPendingOrder,
+  placePendingOrder,
+  reversePosition,
+
   applyBarExits,
   availableEquity,
   buildPostmortem,
@@ -162,9 +167,9 @@ describe('margin / pnl helpers', () => {
 });
 
 describe('open guards', () => {
-  it('rejects a reverse-direction open with 反向须先平仓', () => {
-    expect(errMessage(marketOpen(openedLong(), bar({ close: 100 }), 'short', 20, 10))).toBe('反向须先平仓');
-    expect(errMessage(marketOpen(openedShort(), bar({ close: 100 }), 'long', 20, 10))).toBe('反向须先平仓');
+  it('rejects a reverse-direction open with 反向请使用反向开仓', () => {
+    expect(errMessage(marketOpen(openedLong(), bar({ close: 100 }), 'short', 20, 10))).toBe('反向请使用反向开仓');
+    expect(errMessage(marketOpen(openedShort(), bar({ close: 100 }), 'long', 20, 10))).toBe('反向请使用反向开仓');
   });
 
   it('rejects a same-direction open with 已有仓位，请使用加仓', () => {
@@ -575,5 +580,97 @@ describe('buildPostmortem', () => {
     const pm = buildPostmortem(led.position!, 1000, [bar({ open: 100, high: 100, low: 80, close: 82 })]);
     expect(pm.usedMargin).toBeCloseTo(250, 12);
     expect(pm.adverseExcursion).toBeCloseTo(0.2, 12);
+  });
+});
+
+describe('pending orders', () => {
+  const flat = emptyLedger(1000, 0);
+
+  it('rejects a limit buy at or above the mark', () => {
+    const res = placePendingOrder(flat, bar({ close: 100 }), 'limit', 'long', 100, 10, 100);
+    expect(errMessage(res)).toBe('限价买须低于现价');
+  });
+
+  it('fills a limit buy when price dips to the level, at the limit', () => {
+    const placed = unwrap(placePendingOrder(flat, bar({ close: 100 }), 'limit', 'long', 100, 10, 95));
+    const filled = applyBarAdvance(placed, bar({ open: 99, high: 100, low: 94, close: 96 })).ledger;
+    expect(filled.position?.entryPrice).toBe(95);
+    expect(filled.markers.at(-1)?.label).toBe('限价成交');
+  });
+
+  it('fills a gapped limit buy at the open, inside the bar', () => {
+    const placed = unwrap(placePendingOrder(flat, bar({ close: 100 }), 'limit', 'long', 100, 10, 95));
+    const filled = applyBarAdvance(placed, bar({ open: 90, high: 95, low: 88, close: 92 })).ledger;
+    expect(filled.position?.entryPrice).toBe(90);
+  });
+
+  it('fills a stop buy through the trigger, at the level', () => {
+    const placed = unwrap(placePendingOrder(flat, bar({ close: 100 }), 'stop', 'long', 100, 10, 105));
+    const filled = applyBarAdvance(placed, bar({ open: 101, high: 106, low: 100, close: 104 })).ledger;
+    expect(filled.position?.entryPrice).toBe(105);
+    expect(filled.markers.at(-1)?.label).toBe('止损单成交');
+  });
+
+  it('keeps a stop_limit working when the trigger fires but the limit is unreachable', () => {
+    const placed = unwrap(
+      placePendingOrder(flat, bar({ close: 100 }), 'stop_limit', 'long', 100, 10, 105, 106),
+    );
+    const advanced = applyBarAdvance(placed, bar({ open: 105, high: 105.5, low: 104, close: 105 })).ledger;
+    // triggered (high ≥ 105) but limit 106 not reached → still working, now as a limit at 106
+    expect(advanced.pendingOrder?.price).toBe(106);
+    expect(advanced.position).toBeNull();
+    const filled = applyBarAdvance(advanced, bar({ open: 105.5, high: 107, low: 105, close: 106.5 })).ledger;
+    // price opened below the resting limit → immediate fill at the better open price
+    expect(filled.position?.entryPrice).toBe(105.5);
+  });
+
+  it('cancels a working order', () => {
+    const placed = unwrap(placePendingOrder(flat, bar({ close: 100 }), 'limit', 'long', 100, 10, 95));
+    const cancelled = unwrap(cancelPendingOrder(placed));
+    expect(cancelled.pendingOrder).toBeNull();
+  });
+
+  it('then settles the SL on the same bar the order fills', () => {
+    const placed = unwrap(
+      placePendingOrder(flat, bar({ close: 100 }), 'limit', 'long', 100, 10, 95, null, 94, null),
+    );
+    const filled = applyBarAdvance(placed, bar({ open: 95, high: 95.5, low: 93.5, close: 94.5 })).ledger;
+    // entry at 95, bar low 93.5 ≤ SL 94 → stopped out on the same bar
+    expect(filled.position).toBeNull();
+    expect(filled.closedCycles).toHaveLength(1);
+    expect(filled.closedCycles[0]?.reason).toBe('止损');
+  });
+});
+
+describe('closed cycles', () => {
+  it('records one cycle per full close with net stats', () => {
+    let ledger = emptyLedger(1000, 0.001);
+    ledger = unwrap(marketOpen(ledger, bar({ close: 100 }), 'long', 100, 10));
+    ledger = unwrap(marketClose(ledger, bar({ close: 110 }), 0.5));
+    ledger = unwrap(marketClose(ledger, bar({ close: 120 })));
+    expect(ledger.closedCycles).toHaveLength(1);
+    const cycle = ledger.closedCycles[0]!;
+    expect(cycle.direction).toBe('long');
+    expect(cycle.entryPrice).toBe(100);
+    expect(cycle.exitPrice).toBe(120);
+    expect(cycle.qty).toBeCloseTo(10, 8);
+    expect(cycle.fees).toBeGreaterThan(0);
+    expect(cycle.reason).toBe('平仓');
+  });
+});
+
+describe('reversePosition', () => {
+  it('flattens and opens the opposite side with the same margin', () => {
+    let ledger = emptyLedger(1000, 0);
+    ledger = unwrap(marketOpen(ledger, bar({ close: 100 }), 'long', 100, 10));
+    const reversed = unwrap(reversePosition(ledger, bar({ close: 105 }), 100));
+    expect(reversed.position?.direction).toBe('short');
+    expect(reversed.position?.entryPrice).toBe(105);
+    expect(reversed.closedCycles).toHaveLength(1);
+    expect(reversed.closedCycles[0]?.direction).toBe('long');
+  });
+
+  it('rejects when flat', () => {
+    expect(errMessage(reversePosition(emptyLedger(1000, 0), bar({ close: 100 }), 100))).toBe('无仓位可反向');
   });
 });

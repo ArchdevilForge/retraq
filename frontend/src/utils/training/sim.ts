@@ -1,5 +1,15 @@
 import type { Kline } from '../../services/api';
-import type { Direction, Postmortem, RunStats, SimMarker, SimPosition, VirtualAccount } from './types';
+import type {
+  ClosedCycle,
+  Direction,
+  PendingOrder,
+  PendingOrderKind,
+  Postmortem,
+  RunStats,
+  SimMarker,
+  SimPosition,
+  VirtualAccount,
+} from './types';
 import { MAINTENANCE_MARGIN_RATE, MAX_LEVERAGE } from './types';
 
 export type SimError = { ok: false; message: string };
@@ -9,8 +19,11 @@ export type SimResult<T> = SimOk<T> | SimError;
 export type Ledger = {
   account: VirtualAccount;
   position: SimPosition | null;
+  /** Working order while flat (limit / stop / stop_limit). */
+  pendingOrder: PendingOrder | null;
   stats: RunStats;
   markers: SimMarker[];
+  closedCycles: ClosedCycle[];
 };
 
 function feeOf(price: number, qty: number, feeRate: number): number {
@@ -131,6 +144,25 @@ function closeQty(
   const cyclePnl = pos.cyclePnl + pnl;
   const cycleFees = pos.cycleFees + fee;
 
+  const closedCycles = isFull
+    ? [
+        ...ledger.closedCycles,
+        {
+          direction: pos.direction,
+          entryPrice: pos.entryPrice,
+          exitPrice: price,
+          qty: pos.openedQty,
+          leverage: pos.leverage,
+          profit: cyclePnl,
+          fees: cycleFees,
+          entryTime: pos.openedAt,
+          exitTime: bar.time,
+          margin: requiredMargin(pos.entryPrice, pos.qty, pos.leverage),
+          reason,
+        } as ClosedCycle,
+      ]
+    : ledger.closedCycles;
+
   // Full flat only: win rate uses whole-cycle net (partials + final)
   const stats: RunStats = {
     trades: ledger.stats.trades + (isFull ? 1 : 0),
@@ -147,8 +179,10 @@ function closeQty(
         equity: ledger.account.equity + pnl - fee,
       },
       position: isFull ? null : { ...pos, qty: remaining, cyclePnl, cycleFees },
+      pendingOrder: ledger.pendingOrder,
       stats,
       markers: pushMarker(ledger.markers, bar, 'exit', pos.direction, price, reason),
+      closedCycles,
     },
   };
 }
@@ -175,27 +209,26 @@ function checkStops(
   return null;
 }
 
-/** Open by committed margin; leverage turns it into notional. */
-export function marketOpen(
+/** Open at an explicit fill price (market close, or a working order's level). */
+function openAtPrice(
   ledger: Ledger,
   bar: Kline,
   direction: Direction,
   marginUsdt: number,
   leverage: number,
-  stopLoss?: number | null,
-  takeProfit?: number | null,
+  stopLoss: number | null | undefined,
+  takeProfit: number | null | undefined,
+  price: number,
+  label: string,
 ): SimResult<Ledger> {
   if (ledger.position) {
-    if (ledger.position.direction !== direction) {
-      return { ok: false, message: '反向须先平仓' };
-    }
-    return { ok: false, message: '已有仓位，请使用加仓' };
+    return { ok: false, message: '已有仓位' };
   }
   if (!(marginUsdt > 0)) return { ok: false, message: '保证金须大于 0' };
   const lev = clampLeverage(leverage);
-  const price = bar.close;
+  if (!(price > 0)) return { ok: false, message: '成交价无效' };
   const notional = marginToNotional(marginUsdt, lev);
-  const qty = price > 0 ? notional / price : 0;
+  const qty = notional / price;
   if (!(qty > 0)) return { ok: false, message: '保证金无效' };
   const badStops = checkStops(direction, price, stopLoss, takeProfit);
   if (badStops) return badStops;
@@ -206,6 +239,7 @@ export function marketOpen(
   const position: SimPosition = {
     direction,
     qty,
+    openedQty: qty,
     entryPrice: price,
     leverage: lev,
     stopLoss: stopLoss ?? null,
@@ -219,10 +253,32 @@ export function marketOpen(
     value: {
       account: { ...ledger.account, equity: ledger.account.equity - fee },
       position,
+      pendingOrder: null,
       stats: { ...ledger.stats, fees: ledger.stats.fees + fee },
-      markers: pushMarker(ledger.markers, bar, 'entry', direction, price, '开仓'),
+      markers: pushMarker(ledger.markers, bar, 'entry', direction, price, label),
+      closedCycles: ledger.closedCycles,
     },
   };
+}
+
+/** Open by committed margin at the cursor bar's close. */
+export function marketOpen(
+  ledger: Ledger,
+  bar: Kline,
+  direction: Direction,
+  marginUsdt: number,
+  leverage: number,
+  stopLoss?: number | null,
+  takeProfit?: number | null,
+): SimResult<Ledger> {
+  if (ledger.pendingOrder) return { ok: false, message: '有挂单待成交，先撤销' };
+  if (ledger.position) {
+    if (ledger.position.direction !== direction) {
+      return { ok: false, message: '反向请使用反向开仓' };
+    }
+    return { ok: false, message: '已有仓位，请使用加仓' };
+  }
+  return openAtPrice(ledger, bar, direction, marginUsdt, leverage, stopLoss, takeProfit, bar.close, '开仓');
 }
 
 /** Add by committed margin at the position's leverage. */
@@ -244,10 +300,153 @@ export function marketAdd(ledger: Ledger, bar: Kline, marginUsdt: number): SimRe
     value: {
       account: { ...ledger.account, equity: ledger.account.equity - fee },
       position: { ...pos, qty: newQty, entryPrice, cycleFees: pos.cycleFees + fee },
+      pendingOrder: ledger.pendingOrder,
       stats: { ...ledger.stats, fees: ledger.stats.fees + fee },
       markers: pushMarker(ledger.markers, bar, 'entry', pos.direction, price, '加仓'),
+      closedCycles: ledger.closedCycles,
     },
   };
+}
+
+/**
+ * Place a working order while flat: limit fills at the level, stop triggers
+ * through it, stop_limit triggers then keeps working as a limit at limitPrice.
+ */
+export function placePendingOrder(
+  ledger: Ledger,
+  bar: Kline,
+  kind: PendingOrderKind,
+  direction: Direction,
+  marginUsdt: number,
+  leverage: number,
+  price: number,
+  limitPrice?: number | null,
+  stopLoss?: number | null,
+  takeProfit?: number | null,
+): SimResult<Ledger> {
+  if (ledger.position) return { ok: false, message: '挂单只能在空仓时下' };
+  if (ledger.pendingOrder) return { ok: false, message: '已有挂单，先撤销' };
+  if (!(marginUsdt > 0)) return { ok: false, message: '保证金须大于 0' };
+  if (!(price > 0)) return { ok: false, message: '价格无效' };
+  const mark = bar.close;
+  const long = direction === 'long';
+  if (kind === 'limit') {
+    const wrongSide = long ? price >= mark : price <= mark;
+    if (wrongSide) return { ok: false, message: long ? '限价买须低于现价' : '限价卖须高于现价' };
+  } else {
+    const wrongSide = long ? price <= mark : price >= mark;
+    if (wrongSide) return { ok: false, message: long ? '止损买须高于现价' : '止损卖须低于现价' };
+    if (kind === 'stop_limit') {
+      const lp = limitPrice ?? 0;
+      if (!(lp > 0)) return { ok: false, message: '止损限价缺少委托价' };
+      const wrongLimit = long ? lp <= price : lp >= price;
+      if (wrongLimit) return { ok: false, message: long ? '委托价须高于触发价' : '委托价须低于触发价' };
+    }
+  }
+  const badStops = checkStops(direction, mark, stopLoss, takeProfit);
+  if (badStops) return badStops;
+  // Reserve check at the expected fill price so an unfundable order never works.
+  const probe = requiredMargin(price, 1, leverage) * 0 + marginUsdt;
+  const probeFee = feeOf(price, marginToNotional(marginUsdt, leverage), ledger.account.feeRate);
+  if (probe + probeFee > ledger.account.equity + 1e-9) {
+    return { ok: false, message: '保证金不足' };
+  }
+  return {
+    ok: true,
+    value: {
+      ...ledger,
+      pendingOrder: {
+        kind,
+        direction,
+        price,
+        limitPrice: kind === 'stop_limit' ? limitPrice ?? null : null,
+        marginUsdt,
+        leverage: clampLeverage(leverage),
+        stopLoss: stopLoss ?? null,
+        takeProfit: takeProfit ?? null,
+      },
+    },
+  };
+}
+
+export function cancelPendingOrder(ledger: Ledger): SimResult<Ledger> {
+  if (!ledger.pendingOrder) return { ok: false, message: '没有挂单' };
+  return { ok: true, value: { ...ledger, pendingOrder: null } };
+}
+
+/** Fill price for a working order on this bar, or null when it doesn't fill. */
+function orderFill(ledger: Ledger, bar: Kline): { price: number; order: PendingOrder } | null {
+  const order = ledger.pendingOrder;
+  if (!order) return null;
+  const long = order.direction === 'long';
+  if (order.kind === 'stop_limit') {
+    const triggerHit = long ? bar.high >= order.price : bar.low <= order.price;
+    if (!triggerHit) return null;
+    // After the trigger, the limit must also trade within this bar to fill.
+    const lp = order.limitPrice ?? order.price;
+    const limitHit = long ? bar.high >= lp : bar.low <= lp;
+    if (!limitHit) return null;
+    const price = long ? Math.max(lp, bar.open) : Math.min(lp, bar.open);
+    return { price, order: { ...order } };
+  }
+
+  if (order.kind === 'limit') {
+    const hit = long ? bar.low <= order.price : bar.high >= order.price;
+    if (!hit) return null;
+    const price = long ? Math.min(order.price, bar.open) : Math.max(order.price, bar.open);
+    return { price, order };
+  }
+
+  // stop
+  const hit = long ? bar.high >= order.price : bar.low <= order.price;
+  if (!hit) return null;
+  const price = long ? Math.max(order.price, bar.open) : Math.min(order.price, bar.open);
+  return { price, order };
+}
+
+/**
+ * Settle a revealed bar: working order fills first, then the position's
+ * stop-loss / take-profit / 强平 compete on the same bar.
+ */
+export function applyBarAdvance(ledger: Ledger, bar: Kline): { ledger: Ledger; liquidated: boolean } {
+  let current = ledger;
+  const fill = orderFill(current, bar);
+  if (fill) {
+    const label = fill.order.kind === 'limit' ? '限价成交' : fill.order.kind === 'stop' ? '止损单成交' : '止损限价成交';
+    const opened = openAtPrice(
+      { ...current, position: null },
+      bar,
+      fill.order.direction,
+      fill.order.marginUsdt,
+      fill.order.leverage,
+      fill.order.stopLoss,
+      fill.order.takeProfit,
+      fill.price,
+      label,
+    );
+    if (opened.ok) current = opened.value;
+  } else if (current.pendingOrder?.kind === 'stop_limit') {
+    // Triggered but the limit was out of reach this bar: keep working as a pure limit.
+    const o = current.pendingOrder;
+    const long = o.direction === 'long';
+    const triggered = long ? bar.high >= o.price : bar.low <= o.price;
+    if (triggered) {
+      current = {
+        ...current,
+        pendingOrder: { ...o, kind: 'limit', price: o.limitPrice ?? o.price, limitPrice: null },
+      };
+    }
+  }
+  return applyBarExits(current, bar);
+}
+
+/** 反向开仓：平掉全部持仓，同保证金反向开回（docs/PRODUCT.md §六）。 */
+export function reversePosition(ledger: Ledger, bar: Kline, marginUsdt: number): SimResult<Ledger> {
+  const pos = ledger.position;
+  if (!pos) return { ok: false, message: '无仓位可反向' };
+  const closed = marketClose(ledger, bar);
+  if (!closed.ok) return closed;
+  return marketOpen(closed.value, bar, pos.direction === 'long' ? 'short' : 'long', marginUsdt, pos.leverage);
 }
 
 /** Close a fraction of the position (0–1] at the cursor bar's close. Omit = full close. */
@@ -383,12 +582,14 @@ export function replayExits(
 ): { ledger: Ledger; liquidation: { position: SimPosition; backingBalance: number } | null } {
   let current = ledger;
   for (const bar of bars) {
+    if (!current.position && !current.pendingOrder) break;
     const position = current.position;
-    if (!position) break;
     const backingBalance = current.account.equity;
-    const exits = applyBarExits(current, bar);
-    current = exits.ledger;
-    if (exits.liquidated) return { ledger: current, liquidation: { position, backingBalance } };
+    const advanced = applyBarAdvance(current, bar);
+    current = advanced.ledger;
+    if (advanced.liquidated && position) {
+      return { ledger: current, liquidation: { position, backingBalance } };
+    }
   }
   return { ledger: current, liquidation: null };
 }
@@ -448,7 +649,9 @@ export function emptyLedger(startEquity: number, feeRate: number): Ledger {
   return {
     account: { startEquity, feeRate, equity: startEquity },
     position: null,
+    pendingOrder: null,
     stats: { trades: 0, wins: 0, realizedPnl: 0, fees: 0 },
     markers: [],
+    closedCycles: [],
   };
 }

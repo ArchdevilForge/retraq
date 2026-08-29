@@ -18,6 +18,8 @@ type Props = {
   symbolOptions?: string[];
   markers?: SimMarker[];
   liqPrice?: number | null;
+  slPrice?: number | null;
+  tpPrice?: number | null;
   onSelectCompare?: (symbol: string) => void;
   onClearCompare?: () => void;
 };
@@ -47,6 +49,8 @@ export default function TrainingChart({
   symbolOptions = [],
   markers,
   liqPrice = null,
+  slPrice = null,
+  tpPrice = null,
   onSelectCompare,
   onClearCompare,
 }: Props) {
@@ -56,9 +60,19 @@ export default function TrainingChart({
   const seriesMarkers = useMemo(() => simToSeriesMarkers(markers), [markers]);
 
   const priceLines = useMemo<ChartPriceLine[]>(() => {
-    if (liqPrice == null || !Number.isFinite(liqPrice)) return [];
-    return [{ price: liqPrice, color: readChartTheme().down, title: '强平', dashed: true }];
-  }, [liqPrice]);
+    const theme = readChartTheme();
+    const lines: ChartPriceLine[] = [];
+    if (slPrice != null && Number.isFinite(slPrice)) {
+      lines.push({ price: slPrice, color: theme.down, title: '止损', dashed: true });
+    }
+    if (tpPrice != null && Number.isFinite(tpPrice)) {
+      lines.push({ price: tpPrice, color: theme.up, title: '止盈', dashed: true });
+    }
+    if (liqPrice != null && Number.isFinite(liqPrice)) {
+      lines.push({ price: liqPrice, color: theme.down, title: '强平', dashed: true });
+    }
+    return lines;
+  }, [liqPrice, slPrice, tpPrice]);
 
   return (
     <ChartCanvas

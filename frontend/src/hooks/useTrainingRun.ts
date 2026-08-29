@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchKlines, type Kline, type Timeframe } from '../services/api';
 import {
   AUTOPLAY_MS,
-  applyBarExits,
+  applyBarAdvance,
   buildPostmortem,
   canStep,
   emptyLedger,
@@ -12,13 +12,17 @@ import {
   marketAdd,
   marketClose,
   marketOpen,
+  cancelPendingOrder,
   normalizeSymbol,
   pickRandomScenario,
+  placePendingOrder,
+  reversePosition,
   updateStops,
   visibleBars,
   visibleBarsUntilTime,
   type Direction,
   type Ledger,
+  type PendingOrderKind,
   type SimPosition,
   type TrainingRun,
   type TrainingScenario,
@@ -73,12 +77,14 @@ function buildRun(
     bars,
     compareBars,
     position: null,
+    pendingOrder: null,
     revealed: false,
     locked: false,
     liquidated: false,
     postmortem: null,
     stats: ledger.stats,
     markers: [],
+    closedCycles: [],
   };
 }
 
@@ -86,8 +92,10 @@ function ledgerFromRun(run: TrainingRun): Ledger {
   return {
     account: run.account,
     position: run.position,
+    pendingOrder: run.pendingOrder,
     stats: run.stats,
     markers: run.markers,
+    closedCycles: run.closedCycles,
   };
 }
 
@@ -96,8 +104,10 @@ function applyLedger(run: TrainingRun, ledger: Ledger): TrainingRun {
     ...run,
     account: ledger.account,
     position: ledger.position,
+    pendingOrder: ledger.pendingOrder,
     stats: ledger.stats,
     markers: ledger.markers,
+    closedCycles: ledger.closedCycles,
   };
 }
 
@@ -185,7 +195,8 @@ export function useTrainingRun() {
       // exactly the B in the liquidation identity.
       const backingBalance = prev.account.equity;
       let next: TrainingRun = { ...prev, cursorIndex: nextIndex };
-      const exits = applyBarExits(ledgerFromRun(next), bar);
+      // Working order fills first, then the position's exits compete on this bar.
+      const exits = applyBarAdvance(ledgerFromRun(next), bar);
       next = applyLedger(next, exits.ledger);
       if (exits.liquidated && openPos) {
         return settleLiquidation(next, openPos, backingBalance);
@@ -398,6 +409,35 @@ export function useTrainingRun() {
     [applyOrder],
   );
 
+  /** Working order (limit / stop / stop_limit) while flat. */
+  const placeOrder = useCallback(
+    (
+      kind: PendingOrderKind,
+      direction: Direction,
+      marginUsdt: number,
+      leverage: number,
+      price: number,
+      limitPrice?: number | null,
+      sl?: number | null,
+      tp?: number | null,
+    ) =>
+      applyOrder((_r, bar, ledger) =>
+        placePendingOrder(ledger, bar, kind, direction, marginUsdt, leverage, price, limitPrice, sl, tp),
+      ),
+    [applyOrder],
+  );
+
+  const cancelOrder = useCallback(
+    () => applyOrder((_r, _bar, ledger) => cancelPendingOrder(ledger)),
+    [applyOrder],
+  );
+
+  /** 平掉全部持仓并同保证金反向开回。 */
+  const reverse = useCallback(
+    (marginUsdt: number) => applyOrder((_r, bar, ledger) => reversePosition(ledger, bar, marginUsdt)),
+    [applyOrder],
+  );
+
   const visibleMain = useMemo(
     () => (run ? visibleBars(run.bars, run.cursorIndex, run.revealed) : []),
     [run],
@@ -486,6 +526,9 @@ export function useTrainingRun() {
     add,
     close,
     setStops,
+    placeOrder,
+    cancelOrder,
+    reverse,
     setCompareSymbol,
     compareLoading,
     compareError,

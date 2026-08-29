@@ -3,7 +3,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import TrainingChart from '../components/TrainingChart';
 import { useToast } from '../components/ToastHost';
 import { useTrainingRun } from '../hooks/useTrainingRun';
-import { TIMEFRAMES, type Timeframe } from '../services/api';
+import { saveTrainingSession, TIMEFRAMES, type Timeframe } from '../services/api';
+import { useDataset } from '../context/DatasetContext';
 import {
   DEFAULT_CONTEXT_BARS,
   DEFAULT_FEE_RATE,
@@ -115,6 +116,7 @@ function defaultRange(): { start: string; end: string } {
 
 export default function TrainPage() {
   const { toast } = useToast();
+  const { refreshDatasets } = useDataset();
   const {
     run,
     loading,
@@ -133,6 +135,9 @@ export default function TrainPage() {
     add,
     close,
     setStops,
+    placeOrder,
+    cancelOrder,
+    reverse,
     setCompareSymbol,
     compareLoading,
     compareError,
@@ -165,6 +170,11 @@ export default function TrainPage() {
   const [leverage, setLeverage] = useState(DEFAULT_LEVERAGE);
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
+  // 挂单类型：市价 / 限价 / 止损 / 止损限价（docs/PRODUCT.md §六）
+  const [orderKind, setOrderKind] = useState<'market' | 'limit' | 'stop' | 'stop_limit'>('market');
+  const [triggerPrice, setTriggerPrice] = useState('');
+  const [limitPrice, setLimitPrice] = useState('');
+  const [savingRun, setSavingRun] = useState(false);
 
   const pool = useMemo(
     () =>
@@ -198,6 +208,7 @@ export default function TrainPage() {
     const pos: SimPosition = {
       direction,
       qty,
+      openedQty: qty,
       entryPrice: mark,
       leverage: lev,
       stopLoss: null,
@@ -312,8 +323,60 @@ export default function TrainPage() {
       toast('保证金无效', 'error');
       return;
     }
-    const err = open(direction, orderMargin, clampLeverage(leverage), parseOpt(sl), parseOpt(tp));
+    let err: string | null;
+    if (orderKind === 'market') {
+      err = open(direction, orderMargin, clampLeverage(leverage), parseOpt(sl), parseOpt(tp));
+    } else {
+      const trigger = parseOpt(triggerPrice);
+      if (trigger == null || trigger <= 0) {
+        toast('挂单价格无效', 'error');
+        return;
+      }
+      const limit = orderKind === 'stop_limit' ? parseOpt(limitPrice) : null;
+      err = placeOrder(orderKind, direction, orderMargin, clampLeverage(leverage), trigger, limit, parseOpt(sl), parseOpt(tp));
+    }
     if (err) toast(err, 'error');
+    else setOrderKind('market');
+  };
+
+  const handleReverse = () => {
+    if (!(orderMargin > 0)) {
+      toast('保证金无效', 'error');
+      return;
+    }
+    const err = reverse(orderMargin);
+    if (err) toast(err, 'error');
+  };
+
+  const handleSaveRun = async () => {
+    if (!run || run.closedCycles.length === 0) return;
+    setSavingRun(true);
+    try {
+      const res = await saveTrainingSession({
+        symbol: run.scenario.symbol,
+        timeframe: run.scenario.timeframe,
+        start_equity: run.account.startEquity,
+        realized_pnl: run.stats.realizedPnl,
+        fees: run.stats.fees,
+        trades: run.closedCycles.map((c) => ({
+          symbol: run.scenario.symbol,
+          direction: c.direction,
+          leverage: c.leverage,
+          entry_price: c.entryPrice,
+          exit_price: c.exitPrice,
+          profit: c.profit - c.fees,
+          margin: c.margin,
+          entry_time: c.entryTime,
+          exit_time: c.exitTime,
+        })),
+      });
+      toast(`本局已落库：${res.dataset_name}（${res.trade_count} 笔）`, 'success');
+      await refreshDatasets();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : '训练结果保存失败', 'error');
+    } finally {
+      setSavingRun(false);
+    }
   };
 
   return (
@@ -573,6 +636,17 @@ export default function TrainPage() {
                   <button type="button" className="oc-btn oc-btn--sm oc-btn--ghost" onClick={reset}>
                     重置
                   </button>
+                  {run.locked && run.closedCycles.length > 0 ? (
+                    <button
+                      type="button"
+                      className="oc-btn oc-btn--sm oc-btn--primary"
+                      disabled={savingRun}
+                      onClick={() => void handleSaveRun()}
+                      title="闭环交易落库为 sim 数据集，可进复盘与分析"
+                    >
+                      {savingRun ? '保存中…' : '落库本局'}
+                    </button>
+                  ) : null}
                 </div>
               </header>
               <TrainingChart
@@ -587,6 +661,9 @@ export default function TrainPage() {
                 compareError={compareError}
                 symbolOptions={pool}
                 markers={run.markers}
+                liqPrice={liqPrice}
+                slPrice={run.position?.stopLoss ?? null}
+                tpPrice={run.position?.takeProfit ?? null}
                 onSelectCompare={(s) => void setCompareSymbol(s)}
                 onClearCompare={() => void setCompareSymbol(null)}
               />
@@ -744,6 +821,15 @@ export default function TrainPage() {
                   >
                     加仓
                   </button>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--secondary w-full"
+                    disabled={run.locked}
+                    onClick={handleReverse}
+                    title="平掉全部持仓，同保证金反向开回"
+                  >
+                    反向开仓
+                  </button>
                 </>
               ) : (
                 <p className="oc-text-faint">保证金已用尽，无法加仓</p>
@@ -765,6 +851,36 @@ export default function TrainPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          ) : run.pendingOrder ? (
+            <div className="flex flex-col gap-2 text-[13px]">
+              <div className="panel-card space-y-1">
+                <div className="font-mono text-[12px]">
+                  挂单 ·{' '}
+                  {run.pendingOrder.kind === 'limit'
+                    ? '限价'
+                    : run.pendingOrder.kind === 'stop'
+                      ? '止损单'
+                      : '止损限价'}{' '}
+                  {run.pendingOrder.direction === 'long' ? '做多' : '做空'} @{' '}
+                  {run.pendingOrder.price}
+                  {run.pendingOrder.limitPrice != null ? ` → ${run.pendingOrder.limitPrice}` : ''}
+                </div>
+                <div className="text-[12px] oc-text-faint">
+                  保证金 {run.pendingOrder.marginUsdt.toFixed(2)} U · {run.pendingOrder.leverage}x
+                </div>
+              </div>
+              <button
+                type="button"
+                className="oc-btn oc-btn--sm oc-btn--secondary w-full"
+                disabled={run.locked}
+                onClick={() => {
+                  const err = cancelOrder();
+                  if (err) toast(err, 'error');
+                }}
+              >
+                撤销挂单
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-2 text-[13px]">
@@ -818,13 +934,51 @@ export default function TrainPage() {
                 止盈（可选）
                 <input className="oc-input-wrap" value={tp} onChange={(e) => setTp(e.target.value)} />
               </label>
+              <div className="oc-tabs oc-tabs--fill">
+                {([
+                  ['market', '市价'],
+                  ['limit', '限价'],
+                  ['stop', '止损'],
+                  ['stop_limit', '止损限价'],
+                ] as const).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={`oc-tab${orderKind === kind ? ' oc-tab--active' : ''}`}
+                    onClick={() => setOrderKind(kind)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {orderKind !== 'market' ? (
+                <label className="flex flex-col gap-1">
+                  {orderKind === 'limit' ? '限价' : '触发价'}
+                  <input
+                    className="oc-input-wrap font-mono"
+                    value={triggerPrice}
+                    onChange={(e) => setTriggerPrice(e.target.value)}
+                    placeholder={mark ? String(mark) : ''}
+                  />
+                </label>
+              ) : null}
+              {orderKind === 'stop_limit' ? (
+                <label className="flex flex-col gap-1">
+                  委托价（触发后的限价）
+                  <input
+                    className="oc-input-wrap font-mono"
+                    value={limitPrice}
+                    onChange={(e) => setLimitPrice(e.target.value)}
+                  />
+                </label>
+              ) : null}
               <button
                 type="button"
                 className="oc-btn oc-btn--primary"
                 disabled={!run || run.locked}
                 onClick={handleOpen}
               >
-                开仓
+                {orderKind === 'market' ? '开仓' : '下挂单'}
               </button>
             </div>
           )}

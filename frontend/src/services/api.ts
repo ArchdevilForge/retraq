@@ -665,3 +665,42 @@ export async function upsertReview(
     skipDataset: true,
   });
 }
+
+/* ---- Training session persistence (docs/PRODUCT.md §六) ---- */
+
+export interface TrainingCycleInput {
+  symbol: string;
+  direction: 'long' | 'short';
+  leverage: number;
+  entry_price: number;
+  exit_price: number;
+  profit: number;
+  margin: number;
+  entry_time: number;
+  exit_time: number;
+}
+
+export interface TrainingSaveResult {
+  success: boolean;
+  dataset_id: number;
+  dataset_name: string;
+  trade_count: number;
+  realized_pnl: number;
+  fees: number;
+}
+
+export async function saveTrainingSession(input: {
+  symbol: string;
+  timeframe: string;
+  start_equity: number;
+  realized_pnl: number;
+  fees: number;
+  trades: TrainingCycleInput[];
+}): Promise<TrainingSaveResult> {
+  return apiFetch<TrainingSaveResult>('/api/train/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    skipDataset: true,
+  });
+}
