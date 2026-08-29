@@ -35,8 +35,10 @@ TOKENS = {
     "light": {"--background-base": "#fdfcfc", "--background-weak": "#f1eeee"},
 }
 
-# tabular-nums minimum per page: train shows no numbers until a run starts.
-TABULAR_MIN = {"/replay": 1, "/analysis": 1, "/train": 0}
+# tabular-nums minimum per page: train shows no numbers until a run starts;
+# replay keeps its numbers inside the closed-by-default list popover (§2.4),
+# which the popover test asserts instead.
+TABULAR_MIN = {"/replay": 0, "/analysis": 1, "/train": 0}
 
 
 @pytest.mark.parametrize("w,h", VIEWPORTS)
@@ -168,11 +170,12 @@ def test_async_shows_spinner(browser, seed):
     page = ctx.new_page()
     hook_page(page)
     try:
-        # No trade selected → no chart → no fetch; select one, then stall the
-        # klines request in the handler so the loading state is observable.
+        # No trade selected → no chart → no fetch; open the list popover, pick a
+        # row, then stall the klines request so the loading state is observable.
         page.route("**/api/klines/**", lambda route: (time.sleep(1.5), route.continue_()))
         goto(page, "/replay")
-        page.locator("aside.oc-float-panel--left button.oc-list-item").first.click()
+        page.get_by_role("button", name="打开持仓列表").click()
+        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
         expect(page.locator(".oc-spinner").first).to_be_visible(timeout=5000)
         expect(page.locator(".oc-spinner").first).to_have_count(0, timeout=10000)
     finally:
@@ -189,8 +192,8 @@ def test_error_is_chinese_with_retry(browser, seed):
     try:
         blocking = page.route("**/api/masters**", lambda route: route.fulfill(status=500, body='{"detail":"高手列表加载失败"}'))
         goto(page, "/replay")
-        page.locator("aside.oc-float-panel--left button:has-text('高手')").click()
-        err_zone = page.locator("aside.oc-float-panel--left")
+        page.get_by_role("button", name="打开高手列表").click()
+        err_zone = page.locator(".oc-float-panel--left")
         expect(err_zone.get_by_text(re.compile("高手列表加载失败"))).to_be_visible()
         retry = err_zone.get_by_role("button", name=re.compile("重试"))
         expect(retry).to_be_visible()

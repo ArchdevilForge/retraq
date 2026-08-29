@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import AnalysisInsights from '../components/AnalysisInsights';
 import EmptyDataset from '../components/EmptyDataset';
 import TagAnalysisPanel from '../components/analysis/TagAnalysisPanel';
+import EquityCurve from '../components/analysis/EquityCurve';
+import { BarRow } from '../components/analysis/BarRow';
 import ReviewPanel from '../components/analysis/ReviewPanel';
 import { useDataset } from '../context/DatasetContext';
 import { fetchTradesWithTotal } from '../services/api';
@@ -283,65 +285,93 @@ export default function AnalysisPage() {
                 <div className="oc-stat__value">{core.profitFactor?.toFixed(2) ?? '—'}</div>
               </div>
             </div>
+            <Card title="权益曲线（累计盈亏）">
+              <EquityCurve trades={trades} />
+            </Card>
             <div className="grid gap-4 lg:grid-cols-2">
             <Card title="概要">
-              <ul className="space-y-2 text-[13px] oc-text-muted">
-                <li className="flex justify-between gap-4">
-                  <span>胜 / 负</span>
-                  <span className="font-mono">
-                    {core.winTrades} / {core.lossTrades}
-                  </span>
-                </li>
-                <li className="flex justify-between gap-4">
+              <div className="space-y-3 text-[12px]">
+                <div>
+                  <div className="mb-1 flex justify-between oc-text-faint">
+                    <span>胜 / 负</span>
+                    <span className="font-mono">
+                      {core.winTrades} / {core.lossTrades}
+                    </span>
+                  </div>
+                  <div className="flex h-4 overflow-hidden bg-[var(--surface-base)]">
+                    <div
+                      className="h-full bg-[var(--oc-profit)]/70"
+                      style={{ width: `${core.totalTrades ? (core.winTrades / core.totalTrades) * 100 : 0}%` }}
+                      title={`胜 ${core.winTrades}`}
+                    />
+                    <div
+                      className="h-full bg-[var(--oc-loss)]/60"
+                      style={{ width: `${core.totalTrades ? (core.lossTrades / core.totalTrades) * 100 : 0}%` }}
+                      title={`负 ${core.lossTrades}`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 flex justify-between oc-text-faint">
+                    <span>多空胜率</span>
+                    <span className="font-mono">
+                      多 {fmtPct(symbols.directionStats.longWinRate)} · 空 {fmtPct(symbols.directionStats.shortWinRate)}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <BarRow
+                      label="多"
+                      value={symbols.directionStats.longWinRate ?? 0}
+                      maxAbs={1}
+                      secondary={fmtPct(symbols.directionStats.longWinRate)}
+                      positive={(symbols.directionStats.longWinRate ?? 0) >= 0.5}
+                    />
+                    <BarRow
+                      label="空"
+                      value={symbols.directionStats.shortWinRate ?? 0}
+                      maxAbs={1}
+                      secondary={fmtPct(symbols.directionStats.shortWinRate)}
+                      positive={(symbols.directionStats.shortWinRate ?? 0) >= 0.5}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between oc-text-faint">
                   <span>日均笔数</span>
                   <span className="font-mono">{core.tradesPerDay?.toFixed(1) ?? '—'}</span>
-                </li>
-                <li className="flex justify-between gap-4">
-                  <span>多空胜率</span>
-                  <span className="font-mono text-right">
-                    多 {fmtPct(symbols.directionStats.longWinRate)} · 空 {fmtPct(symbols.directionStats.shortWinRate)}
-                  </span>
-                </li>
-              </ul>
-            </Card>
-            <Card title="极值交易">
-              <div className="space-y-2">
-                <div className="flex justify-between rounded-md oc-surface-success px-3 py-2.5 text-[13px]">
-                  <span className="font-mono">{core.best?.symbol ?? '—'}</span>
-                  <span className="font-mono oc-text-profit">{fmtMoney(core.best?.profit)}</span>
-                </div>
-                <div className="flex justify-between rounded-md oc-surface-error px-3 py-2.5 text-[13px]">
-                  <span className="font-mono">{core.worst?.symbol ?? '—'}</span>
-                  <span className="font-mono oc-text-loss">{fmtMoney(core.worst?.profit)}</span>
                 </div>
               </div>
             </Card>
+            <Card title="极值交易">
+              <div className="space-y-1.5">
+                <BarRow
+                  label={core.best?.symbol ?? '—'}
+                  value={core.best?.profit ?? 0}
+                  maxAbs={Math.max(Math.abs(core.best?.profit ?? 0), Math.abs(core.worst?.profit ?? 0), 1)}
+                  secondary={fmtMoney(core.best?.profit)}
+                  positive
+                />
+                <BarRow
+                  label={core.worst?.symbol ?? '—'}
+                  value={core.worst?.profit ?? 0}
+                  maxAbs={Math.max(Math.abs(core.best?.profit ?? 0), Math.abs(core.worst?.profit ?? 0), 1)}
+                  secondary={fmtMoney(core.worst?.profit)}
+                  positive={false}
+                />
+              </div>
+            </Card>
             <Card title="交易对" className="lg:col-span-2">
-              <div className="oc-table-wrap">
-                <table className="oc-table">
-                  <thead>
-                    <tr>
-                      <th>对</th>
-                      <th className="text-right">笔数</th>
-                      <th className="text-right">胜率</th>
-                      <th className="text-right">盈亏</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {symbols.symbolStats.slice(0, 12).map((s) => (
-                      <tr key={s.symbol}>
-                        <td className="font-mono">{s.symbol}</td>
-                        <td className="text-right">{s.trades}</td>
-                        <td className={`text-right ${s.winRate >= 0.5 ? 'oc-text-profit' : 'oc-text-loss'}`}>
-                          {fmtPct(s.winRate)}
-                        </td>
-                        <td className={`text-right font-mono ${s.totalPnl >= 0 ? 'oc-text-profit' : 'oc-text-loss'}`}>
-                          {fmtMoney(s.totalPnl)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-1.5">
+                {symbols.symbolStats.slice(0, 12).map((s) => (
+                  <BarRow
+                    key={s.symbol}
+                    label={s.symbol}
+                    value={s.totalPnl}
+                    maxAbs={Math.max(...symbols.symbolStats.slice(0, 12).map((x) => Math.abs(x.totalPnl)), 1)}
+                    secondary={fmtMoney(s.totalPnl)}
+                    positive={s.totalPnl >= 0}
+                    title={`${s.trades} 笔 · 胜率 ${fmtPct(s.winRate)}`}
+                  />
+                ))}
               </div>
             </Card>
             </div>

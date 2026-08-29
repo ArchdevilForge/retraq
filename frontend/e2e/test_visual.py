@@ -34,12 +34,14 @@ class TestVisualBaselines:
             page.wait_for_timeout(700)
             _shot(page, f"replay-default-{theme}")
 
-            page.locator("aside.oc-float-panel--left button.oc-list-item").first.click()
+            # §2.4 弹层范式：列表在浮层里，选中后浮卡弹出
+            page.get_by_role("button", name="打开持仓列表").click()
+            page.locator(".oc-float-panel--left button.oc-list-item").first.click()
             expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=10000)
             page.wait_for_timeout(700)
             _shot(page, f"replay-trade-selected-{theme}")
 
-            page.locator("aside.oc-float-panel--left button:has-text('高手')").click()
+            page.get_by_role("button", name="打开高手列表").click()
             page.wait_for_timeout(700)
             _shot(page, f"replay-masters-{theme}")
         finally:

@@ -164,16 +164,13 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
       });
       setTraders(res.data);
       setTotal(res.total);
-      // If no selection or current selection not in list, auto-select first on page 1
-      if (!selectedTrader && res.data.length > 0) {
-        onSelectTrader(res.data[0]);
-      }
+      // §2.4 弹层范式：选中由用户驱动，不再自动选第一名（会抢走列表浮层的控制权）
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '加载高手榜单失败');
     } finally {
       setLoading(false);
     }
-  }, [search, hasPositionsOnly, sortBy, sortOrder, page, selectedTrader, onSelectTrader]);
+  }, [search, hasPositionsOnly, sortBy, sortOrder, page]);
 
   useEffect(() => {
     loadTraders();

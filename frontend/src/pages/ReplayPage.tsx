@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
@@ -38,6 +38,11 @@ function masterPositionToTrade(p: MasterPosition): Trade {
   };
 }
 
+/**
+ * 复盘工作台（docs/DESIGN.md §2.4 弹层范式）：
+ * 图是唯一常驻物；持仓/高手列表为工具条唤起的左侧浮层，
+ * 持仓详情为选中驱动的右侧浮卡（× / Esc 关闭）。
+ */
 export default function ReplayPage() {
   const { activeDatasetId, loading: datasetsLoading, error: datasetsError } = useDataset();
   const [source, setSource] = useState<ReplaySource>('mine');
@@ -45,8 +50,10 @@ export default function ReplayPage() {
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [selectedTrader, setSelectedTrader] = useState<MasterTrader | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<MasterPosition | null>(null);
-  const [listOpen, setListOpen] = useState(true);
-  const [detailOpen, setDetailOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   const masterTrade = useMemo(
     () => (selectedPosition ? masterPositionToTrade(selectedPosition) : null),
@@ -108,6 +115,27 @@ export default function ReplayPage() {
     };
   }, [activeDatasetId, autoSymbolDone]);
 
+  // 弹层关闭：Esc 关最上层浮卡/浮层；点击列表浮层外部关闭（浮卡随选中存续）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (detailOpen) setDetailOpen(false);
+      else if (listOpen) setListOpen(false);
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!listOpen) return;
+      const t = e.target as Node;
+      if (listRef.current?.contains(t) || toolbarRef.current?.contains(t)) return;
+      setListOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [listOpen, detailOpen]);
+
   const handleSymbolChange = useCallback((nextSymbol: string) => {
     setSymbol(nextSymbol);
     if (!nextSymbol) setSelectedTrade(null);
@@ -116,24 +144,42 @@ export default function ReplayPage() {
   const handleSelectTrade = useCallback((trade: Trade | null) => {
     setSelectedTrade(trade);
     if (trade?.symbol) setSymbol(trade.symbol);
+    // §2.4：选中行 → 列表收起、详情浮卡出现（反馈在图上）
+    if (trade) {
+      setListOpen(false);
+      setDetailOpen(true);
+    }
   }, []);
 
   const handleSelectTrader = useCallback((trader: MasterTrader) => {
     setSelectedTrader(trader);
     setSelectedPosition(null);
+    setListOpen(false);
+    setDetailOpen(true);
   }, []);
 
   const handleSelectPosition = useCallback((position: MasterPosition) => {
     setSelectedPosition(position);
   }, []);
 
-  const switchSource = useCallback((next: ReplaySource) => {
-    setSource(next);
+  const clearSelections = useCallback(() => {
     setSelectedTrade(null);
     setSelectedTrader(null);
     setSelectedPosition(null);
-    setSymbol('');
   }, []);
+
+  const openList = useCallback(
+    (next: ReplaySource) => {
+      if (listOpen && source === next) {
+        setListOpen(false); // 再点同一按钮 = 收起
+        return;
+      }
+      setSource(next);
+      clearSelections();
+      setListOpen(true);
+    },
+    [listOpen, source, clearSelections],
+  );
 
   if (datasetsLoading) {
     return (
@@ -154,18 +200,42 @@ export default function ReplayPage() {
 
   const noDataset = source === 'mine' && activeDatasetId == null;
 
+  // 左侧竖条按钮栏（TV 左侧工具栏概念）：稳定挂载在 ReplayPage，不随图表重渲染重建
+  const rail = (
+    <div ref={toolbarRef} className="absolute left-2 top-[62px] z-30 flex flex-col gap-1.5">
+      <button
+        type="button"
+        aria-label="打开持仓列表"
+        aria-expanded={listOpen && source === 'mine'}
+        className={`oc-btn oc-btn--sm oc-btn--secondary w-[64px]${listOpen && source === 'mine' ? ' oc-btn--primary' : ''}`}
+        onClick={() => openList('mine')}
+      >
+        持仓
+      </button>
+      <button
+        type="button"
+        aria-label="打开高手列表"
+        aria-expanded={listOpen && source === 'masters'}
+        className={`oc-btn oc-btn--sm oc-btn--secondary w-[64px]${listOpen && source === 'masters' ? ' oc-btn--primary' : ''}`}
+        onClick={() => openList('masters')}
+      >
+        高手
+      </button>
+      <DailyReview />
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
       <div className="oc-canvas oc-enter-stagger">
         {/* Hero chart — the background layer (docs/DESIGN.md §2.1) */}
-        <div className="oc-canvas__chart">
+        <div key="chart" className="oc-canvas__chart">
           {activeSymbol && !noDataset ? (
             <ChartManager
               symbol={activeSymbol}
               selectedTrade={activeTrade}
               noFills={source === 'masters'}
               selfCompareTrades={source === 'masters' && compareOpen ? selfCompareTrades : null}
-              toolbarExtra={<DailyReview />}
             />
           ) : noDataset ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
@@ -173,30 +243,40 @@ export default function ReplayPage() {
             </div>
           ) : (
             <div className="oc-empty">
-              <p className="oc-empty__title">
-                {source === 'mine' ? '从左侧选一笔交易' : '从左侧选一位高手并复盘其交割单'}
-              </p>
+              <p className="oc-empty__title">从工具条选择持仓或高手开始复盘</p>
             </div>
           )}
         </div>
 
-        {/* Left floating panel: 我的 / 高手 */}
-        <aside
+        {/* 左侧竖条按钮栏（§2.4 工具条按钮唤起弹层） */}
+        <div key="rail">{rail}</div>
+
+        {/* 左侧列表浮层：我的 / 高手（§2.4） */}
+        <div
+          key="list-popover"
+          ref={listRef}
           className={`oc-float-panel oc-float-panel--left${listOpen ? '' : ' oc-float-panel--hidden'}`}
+          style={{ left: 78 }}
           aria-hidden={!listOpen}
         >
           <div className="oc-tabs oc-tabs--fill shrink-0 border-b-2 border-[var(--border-strong-base)]">
             <button
               type="button"
               className={`oc-tab${source === 'mine' ? ' oc-tab--active' : ''}`}
-              onClick={() => switchSource('mine')}
+              onClick={() => {
+                setSource('mine');
+                clearSelections();
+              }}
             >
               我的
             </button>
             <button
               type="button"
               className={`oc-tab${source === 'masters' ? ' oc-tab--active' : ''}`}
-              onClick={() => switchSource('masters')}
+              onClick={() => {
+                setSource('masters');
+                clearSelections();
+              }}
             >
               高手
             </button>
@@ -206,50 +286,28 @@ export default function ReplayPage() {
           ) : (
             <MasterList selectedTrader={selectedTrader} onSelectTrader={handleSelectTrader} onHide={() => setListOpen(false)} />
           )}
-        </aside>
+        </div>
 
-        {/* Right floating panel: 持仓详情 / 交割单 */}
-        <aside
-          className={`oc-float-panel oc-float-panel--right${detailOpen ? '' : ' oc-float-panel--hidden'}`}
-          aria-hidden={!detailOpen}
-        >
-          {source === 'mine' ? (
-            <PositionDetails trade={selectedTrade} onHide={() => setDetailOpen(false)} />
-          ) : (
-            <MasterDetailPanel
-              trader={selectedTrader}
-              selectedPosition={selectedPosition}
-              onSelectPosition={handleSelectPosition}
-              onHide={() => setDetailOpen(false)}
-            />
-          )}
-        </aside>
-
-        {/* Rails when panels are collapsed */}
-        {!listOpen ? (
-          <button
-            type="button"
-            className="oc-panel-rail oc-panel-rail--left"
-            aria-label="显示列表"
-            onClick={() => setListOpen(true)}
-          >
-            列表
-          </button>
-        ) : null}
-        {!detailOpen ? (
-          <button
-            type="button"
-            className="oc-panel-rail oc-panel-rail--right"
-            aria-label="显示详情"
-            onClick={() => setDetailOpen(true)}
-          >
-            详情
-          </button>
+        {/* 右侧详情浮卡：选中驱动的持仓详情 / 高手画像（§2.4） */}
+        {detailOpen && (source === 'masters' ? selectedTrader : selectedTrade) ? (
+          <div key="detail-card" className="oc-float-panel oc-float-panel--right">
+            {source === 'mine' ? (
+              <PositionDetails trade={selectedTrade} onHide={() => setDetailOpen(false)} />
+            ) : (
+              <MasterDetailPanel
+                trader={selectedTrader}
+                selectedPosition={selectedPosition}
+                onSelectPosition={handleSelectPosition}
+                onHide={() => setDetailOpen(false)}
+              />
+            )}
+          </div>
         ) : null}
 
         {/* P§五.2 同期「他 vs 我」对照 chip */}
         {source === 'masters' && activeTrade && selfCompareTrades ? (
           <div
+            key="compare-chip"
             className="panel-card absolute left-1/2 top-[62px] z-20 flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-[12px]"
             data-testid="self-compare-chip"
           >

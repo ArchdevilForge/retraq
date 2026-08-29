@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import TrainingChart from '../components/TrainingChart';
 import { useToast } from '../components/ToastHost';
 import { useTrainingRun } from '../hooks/useTrainingRun';
@@ -160,10 +160,9 @@ export default function TrainPage() {
   const [feeRatePct, setFeeRatePct] = useState(DEFAULT_FEE_RATE * 100);
   const [poolText, setPoolText] = useState(() => loadTrainingPool().join('\n'));
   const [showPool, setShowPool] = useState(false);
-  // Scenario config is a once-per-run wizard; it gives the chart its width back
-  // as soon as a run starts. 开新局 stays reachable from the chart header.
-  const [setupOpen, setSetupOpen] = useState(true);
-  const [detailOpen, setDetailOpen] = useState(true);
+  // §2.4 弹层范式：开局配置为 modal（「开新局」唤起），本局/下单为右侧抽屉（开局自动打开）
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const [direction, setDirection] = useState<'long' | 'short'>('long');
   const [marginFraction, setMarginFraction] = useState(DEFAULT_MARGIN_FRACTION);
@@ -256,6 +255,21 @@ export default function TrainPage() {
   const holdDistance =
     run?.position && mark ? liquidationDistance(run.account, run.position, mark) : null;
   const postmortem = run?.postmortem ?? null;
+
+  // 开局成功：收起配置 modal、自动展开本局抽屉（下单就在抽屉里）
+  useEffect(() => {
+    if (!run) return;
+    setDetailOpen(true);
+    setSetupOpen(false);
+  }, [run]);
+
+  const setupModalRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = setupModalRef.current;
+    if (!d) return;
+    if (setupOpen && !d.open) d.showModal();
+    if (!setupOpen && d.open) d.close();
+  }, [setupOpen]);
 
   // 回放控制条快捷键：Shift+↓ 播放/暂停，Shift+→ 单步（docs/DESIGN.md §2.3）。
   // 输入框聚焦时不劫持按键。
@@ -433,22 +447,27 @@ export default function TrainPage() {
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden p-2">
       <div className="oc-canvas min-h-0 flex-1 overflow-hidden">
-        <aside
-          className={`oc-float-panel oc-float-panel--left${setupOpen ? '' : ' oc-float-panel--hidden'}`}
-          aria-hidden={!setupOpen}
+        <dialog
+          ref={setupModalRef}
+          className="oc-modal w-[min(24rem,92vw)]"
+          aria-label="训练场景配置"
+          onCancel={(e) => {
+            e.preventDefault();
+            setSetupOpen(false);
+          }}
         >
-          <header className="panel-header flex shrink-0 items-center justify-between gap-2">
-            <h2 className="oc-panel__title">场景</h2>
+          <div className="oc-modal__header">
+            <h2 className="oc-panel__title">训练场景</h2>
             <button
               type="button"
-              className="oc-icon-btn oc-icon-btn--sm oc-panel-hide"
-              aria-label="隐藏场景配置"
+              className="oc-icon-btn oc-icon-btn--sm"
+              aria-label="关闭场景配置"
               onClick={() => setSetupOpen(false)}
             >
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+              <X className="h-3.5 w-3.5" aria-hidden />
             </button>
-          </header>
-          <div className="panel-body flex min-h-0 flex-col gap-3">
+          </div>
+          <div className="oc-modal__body flex min-h-0 flex-col gap-3">
           <div className="oc-tabs oc-tabs--fill">
             <button
               type="button"
@@ -625,33 +644,16 @@ export default function TrainPage() {
           </button>
           {error ? <p className="text-[13px] oc-text-loss">{error}</p> : null}
           </div>
-        </aside>
+        </dialog>
 
         <section className="oc-canvas__chart">
-          {!setupOpen ? (
-            <button
-              type="button"
-              className="oc-panel-rail oc-panel-rail--left"
-              aria-label="显示场景配置"
-              onClick={() => setSetupOpen(true)}
-            >
-              场景
-            </button>
-          ) : null}
-          {!detailOpen ? (
-            <button
-              type="button"
-              className="oc-panel-rail oc-panel-rail--right"
-              aria-label="显示本局面板"
-              onClick={() => setDetailOpen(true)}
-            >
-              本局
-            </button>
-          ) : null}
           {!run ? (
             <div className="oc-empty">
               <p className="oc-empty__title">配置场景后开始</p>
               <p className="oc-empty__desc">未来 K 线默认遮罩；逐步回放并用模拟仓位练习</p>
+              <button type="button" className="oc-btn oc-btn--primary mt-3" onClick={() => setSetupOpen(true)}>
+                配置并开始训练
+              </button>
             </div>
           ) : (
             <>
@@ -706,6 +708,15 @@ export default function TrainPage() {
                   >
                     {loading ? '加载中…' : '开新局'}
                   </button>
+                  <button
+                    type="button"
+                    className="oc-btn oc-btn--sm oc-btn--ghost"
+                    aria-label="显示本局面板"
+                    aria-expanded={detailOpen}
+                    onClick={() => setDetailOpen((v) => !v)}
+                  >
+                    本局
+                  </button>
                   <button type="button" className="oc-btn oc-btn--sm oc-btn--ghost" onClick={reset}>
                     重置
                   </button>
@@ -753,6 +764,7 @@ export default function TrainPage() {
           )}
         </section>
 
+        {run ? (
         <aside
           className={`oc-float-panel oc-float-panel--right${detailOpen ? '' : ' oc-float-panel--hidden'}`}
           aria-hidden={!detailOpen}
@@ -1066,6 +1078,7 @@ export default function TrainPage() {
           )}
           </div>
         </aside>
+        ) : null}
       </div>
     </div>
   );

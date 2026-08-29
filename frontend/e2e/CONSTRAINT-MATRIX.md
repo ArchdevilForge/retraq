@@ -18,7 +18,7 @@
 | D§2.3 | 回放控制条：播放/暂停/单步/倍速 | `test_train.py:357`（单步、自动播放、4× 倍速） | ✅ |
 | D§2.3 | 快捷键 Shift+↓ 播放、Shift+→ 单步 | `test_train.py:363`（键盘断言步进与播放/暂停切换） | ✅ |
 | D§2.3 | 会话可恢复 / 复盘模式自由时间游标 | 落库恢复 `test_train.py:157`；自由游标 `test_replay.py:301`（常驻可见 + 拖动位移断言） | ✅ |
-| D§2.4 | 面板收起后渲染 oc-panel-rail 导轨，秒级展开；data-list/detail-open | `test_replay.py:217` | ✅ |
+| D§2.4 | 弹层范式：列表=工具条按钮+左浮层（点外关、选中自动收）；详情=选中驱动右浮卡（×/Esc） | `test_replay.py:218`（开合/点外/Esc 全链路） | ✅ |
 | D§2.5 | 顶栏仅 复盘/训练/分析 三项 | `helpers.py:144` + `test_invariants.py:45`（三页网格，含 tab 计数=3） | ✅ |
 | D§3 | 深色默认主题 | `test_invariants.py:94`（无存储时 dark + 切换持久化） | ✅ |
 | D§3 | 双模式 token 表（--background-base/weak 值） | light：`test_invariants.py:45`；dark：`test_invariants.py:75`（精确 hex #141212/#201d1d） | ✅ 双主题均精确对齐 |
@@ -67,7 +67,7 @@
 | P§六 | 开局面板（资金/费率/杠杆/保证金模式） | `test_train.py:274`（杠杆 20×、100% 仓输入） | ✅ |
 | P§六 | 结果落库 → sim 数据集 → 可复盘/进分析 | `test_train.py:157`（第 9–10 步：落库 Toast + API 断言 + 切换器「训练」组可见） | ✅ |
 | P§六 | K 线与复盘同源 | `test_train.py:157`（UI 标记价 == /api/klines 收盘价，逐 bar 对齐断言） | ✅ |
-| P§七 | 报告集固定六类，全 tab 可加载 | `test_analysis.py:20`（总览/行为/时间/风险/标签/复盘逐一断言 + 种子数据精确核对） | ✅ |
+| P§七 | 报告集固定六类，全 tab 可加载，图表化拉满（权益曲线/横条图） | `test_analysis.py:20`（六 tab + 权益曲线 canvas + 种子数据核对）；`test_analysis.py:89`（视角切换） | ✅ |
 | P§七 | 「模拟 vs 实盘」对比开关 | `test_analysis.py:89`（默认关，开启后 include_sim 请求） | ✅ |
 | P§七 | master 视角切换 | `test_analysis.py:89`（视角 tab 切高手 → include_master refetch + 诚实空态） | ✅ |
 | P§八 | 心法场景内上下文化，独立学习页取消 | `test_replay.py:113`（错误标签 → 心法卡）；导航无学习页（`test_invariants.py:45` tab=3） | ✅ |
@@ -91,6 +91,7 @@
 
 ## 待裁决缺口（规范有、实现无）
 
-> 2026-08-29 第二轮修复后全部闭环：深色 token（D§3）、回放快捷键与自由游标（D§2.3）、
-> 今日复盘常驻入口（D§6）、日期格式（D§9）、他我对照（P§五.2）、分析 master 视角（P§七）、
-> 数据集删除 UI（§四）均已实现并有测试锚点，详见上表。当前无遗留缺口。
+> 2026-08-29 第二轮修复后全部闭环（深色 token、快捷键/自由游标、今日复盘入口、日期格式、
+> 他我对照、分析 master 视角、数据集删除 UI）。第三轮按用户 grill 收敛结论将 D§2.4 从
+> "常驻浮层面板" 升级为 "TV 式弹层范式"（列表浮层 / 详情浮卡 / 训练 modal+抽屉），
+> 分析页新增权益曲线与横条图（P§七）。当前无遗留缺口。

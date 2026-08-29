@@ -12,11 +12,11 @@ from playwright.sync_api import expect
 from conftest import hook_page, mock_binance_sync, new_context
 from helpers import assert_console_clean, assert_zero_page_scroll, goto
 
-PANEL = "aside.oc-float-panel--left"
+PANEL = ".oc-float-panel--left"
 
 
 def _open_masters(page):
-    page.locator(f"{PANEL} button:has-text('高手')").click()
+    page.get_by_role("button", name="打开高手列表").click()
     expect(page.locator(f"{PANEL}").get_by_text("合约高手榜")).to_be_visible(timeout=10000)
     expect(page.locator(f"{PANEL} button.oc-list-item").first).to_be_visible(timeout=10000)
 
@@ -95,7 +95,7 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         slips.click()
 
         pos = page.locator(
-            "aside.oc-float-panel--right button", has_text=re.compile(r"[多空]\s*\d+x")
+            ".oc-float-panel--right button", has_text=re.compile(r"[多空]\s*\d+x")
         ).first
         expect(pos).to_be_visible(timeout=10000)
         pos.click()
@@ -114,7 +114,7 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         page.get_by_role("button", name="净值走势").click()
         expect(page.get_by_text("7日收益曲线走势")).to_be_visible(timeout=10000)
         page.get_by_role("button", name="实战心法").click()
-        panel = page.locator("aside.oc-float-panel--right")
+        panel = page.locator(".oc-float-panel--right")
         expect(
             panel.get_by_text("加载合约心法中…").or_(panel.locator("div.rounded-lg")).first
         ).to_be_visible(timeout=10000)

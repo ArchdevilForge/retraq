@@ -37,19 +37,25 @@ def test_full_journey_console_and_network(browser, seed):
 
         # replay: pick a trade, chart linkage, drawings panel
         goto(page, "/replay")
-        page.locator("aside.oc-float-panel--left button.oc-list-item").first.click()
+        page.get_by_role("button", name="打开持仓列表").click()
+        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
         expect(page.locator("textarea[placeholder*='这笔交易']")).to_be_visible(timeout=10000)
 
         # masters: leaderboard + seeded trader detail
-        page.locator("aside.oc-float-panel--left button:has-text('高手')").click()
-        page.locator("aside.oc-float-panel--left input[placeholder*='搜索']").fill("E2E")
-        page.locator("aside.oc-float-panel--left button.oc-list-item", has_text="E2E甲").click()
+        page.get_by_role("button", name="打开高手列表").click()
+        expect(page.locator(".oc-float-panel--left button.oc-list-item").first).to_be_visible(timeout=10000)
+        page.locator(".oc-float-panel--left input[placeholder*='搜索']").fill("E2E")
+        row = page.locator(".oc-float-panel--left button.oc-list-item", has_text="E2E甲")
+        expect(row).to_be_visible(timeout=10000)
+        row.click()
         expect(page.get_by_role("button", name=re.compile("合约交割单"))).to_be_visible(timeout=10000)
 
         # train: boot a run and step twice
         goto(page, "/train")
+        page.get_by_role("button", name="配置并开始训练").click()
+        expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
         page.locator("label:has-text('交易对') input").fill("BTC-USDT")
-        page.locator("button:has-text('开始训练'), button:has-text('开始')").last.click()
+        page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
         expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
             timeout=20000
         )
@@ -82,15 +88,17 @@ def test_cpu_throttled_training_flow(browser, seed, api):
         r = api.get("/api/klines/BTC-USDT/15m", params={"limit": 1000})
         bars = r.json()["data"]
         idx = len(bars) - 130
+        page.get_by_role("button", name="配置并开始训练").click()
+        expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
         page.locator("label:has-text('交易对') input").fill("BTC-USDT")
         page.locator("label:has-text('开始') input").fill(_dt(bars[idx]["timestamp"]))
         page.locator("label:has-text('结束') input").fill(_dt(bars[-1]["timestamp"]))
-        page.locator("button:has-text('开始训练'), button:has-text('开始')").last.click()
+        page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
         expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
             timeout=30000
         )
         page.locator("button:has-text('开仓')").last.click()
-        expect(page.locator("aside.oc-float-panel--right").get_by_text(re.compile(r"^[多空] @ \d"))).to_be_visible(
+        expect(page.locator(".oc-float-panel--right").get_by_text(re.compile(r"^[多空] @ \d"))).to_be_visible(
             timeout=10000
         )
         for _ in range(3):
@@ -116,7 +124,8 @@ def test_heap_stable_over_long_session(browser, seed):
         cdp = ctx.new_cdp_session(page)
         cdp.send("Performance.enable")
         goto(page, "/replay")
-        page.locator("aside.oc-float-panel--left button.oc-list-item").first.click()
+        page.get_by_role("button", name="打开持仓列表").click()
+        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
         expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=15000)
         base = _heap_used_mb(cdp)
 

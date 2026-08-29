@@ -33,10 +33,13 @@ def test_analysis_six_tabs_load_with_seed_data(browser, seed):
             panel = page.locator(f"#analysis-panel-{ {'总览':'overview','行为':'behavior','时间':'time','风险':'risk','标签':'tags','复盘':'review'}[label] }")
             expect(panel).to_be_visible(timeout=10000)
 
-        # Back on overview: seeded dataset has exactly 4 trades → 样本 = 4 笔.
+        # Back on overview: seeded dataset has exactly 4 trades → 样本 = 4 笔;
+        # §七 图表化拉满：权益曲线 + 横条图渲染（4 笔均平仓 → 曲线可绘）
         page.get_by_role("tab", name="总览").click()
         sample = page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="样本"))
         expect(sample.locator(".oc-stat__value")).to_have_text(re.compile(r"4\s*笔"), timeout=10000)
+        expect(page.get_by_text("权益曲线（累计盈亏）")).to_be_visible()
+        expect(page.locator(".oc-card", has=page.get_by_text("权益曲线")).locator("canvas").first).to_be_visible()
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()

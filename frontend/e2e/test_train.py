@@ -19,7 +19,7 @@ from helpers import (
     step_until,
 )
 
-RIGHT = "aside.oc-float-panel--right"
+RIGHT = ".oc-float-panel--right"
 DRAG_SURFACE = "div.relative.min-h-0.flex-1 > div.absolute.inset-0"
 CONTEXT_BARS = 50  # DEFAULT_CONTEXT_BARS: cursor starts at window bar 49
 
@@ -88,10 +88,12 @@ def _start_run(page, api, symbol, tail_bars=130, *, choose=False):
     else:
         idx = len(full) - tail_bars
     goto(page, "/train")
+    page.get_by_role("button", name="配置并开始训练").click()
+    expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
     page.locator("label:has-text('交易对') input").fill(symbol)
     page.locator("label:has-text('开始') input").fill(_dt_input(full[idx]["timestamp"]))
     page.locator("label:has-text('结束') input").fill(_dt_input(full[-1]["timestamp"]))
-    page.locator("button:has-text('开始训练'), button:has-text('开始')").last.click()
+    page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
     expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
         timeout=20000
     )
@@ -305,10 +307,12 @@ def test_train_liquidation_settles_run(browser, seed, api):
         bars = _fetch_window(api, symbol, full[start_idx]["timestamp"], full[-1]["timestamp"])
 
         goto(page, "/train")
+        page.get_by_role("button", name="配置并开始训练").click()
+        expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
         page.locator("label:has-text('交易对') input").fill(symbol)
         page.locator("label:has-text('开始') input").fill(_dt_input(full[start_idx]["timestamp"]))
         page.locator("label:has-text('结束') input").fill(_dt_input(full[-1]["timestamp"]))
-        page.locator("button:has-text('开始训练'), button:has-text('开始')").last.click()
+        page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
         expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
             timeout=20000
         )
