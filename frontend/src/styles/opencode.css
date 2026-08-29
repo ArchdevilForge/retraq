@@ -1107,7 +1107,9 @@
 
 .oc-float-panel {
   position: absolute;
-  top: 8px;
+  /* §2.2/§2.4: the chart toolbar (54px) is the topmost floating layer; panels
+     start below it so toolbar controls stay clickable while panels are open. */
+  top: calc(54px + 8px);
   bottom: 8px;
   z-index: 30;
   display: flex;
