@@ -23,7 +23,8 @@
 
 ## Top bar
 
-- **Navbar**: 3-column grid — logo | centered tabs (复盘/训练/分析/学习) | `DatasetPicker` (import + switch).
+- **Navbar**: 3-column grid — logo | centered tabs (复盘/训练/分析/高手/学习) | theme toggle + `DatasetPicker` (import + switch).
+- **高手** (`/masters`): Contract master traders leaderboard, K-line replay & master overlay, trader profile & delivery slips, clone to dataset.
 - **训练** (`/train`): independent of dataset; `TrainPage` + `TrainingChart` + `useTrainingRun`; sim state is in-memory only (see root `CONTEXT.md`).
 - Import: `template=auto`, toast on success/error.
 
@@ -36,12 +37,14 @@
 
 ---
 
-## Accessibility
+## Accessibility & Interaction
 
-- `cursor-pointer` on clickables (global in `index.css`); `focus-visible` ring; `prefers-reduced-motion` respected.
+- `cursor-pointer` on all clickables (global in `index.css`); `focus-visible` ring; `prefers-reduced-motion` respected.
+- `useToast` for all mutation/clone/import feedback; no `alert()` or `confirm()`.
+- Zero page scroll (`overflow-hidden` shell); panels scroll internally.
 
 ---
 
 ## Forbidden
 
-- Emoji as UI icons; gradient text; `alert()` for user messages; nested card-in-card on replay panels.
+- Emoji as UI icons; gradient text; `alert()` for user messages; nested card-in-card on replay panels; non-monospace font overrides.

@@ -6,6 +6,7 @@ import ReplayPage from './pages/ReplayPage';
 import AnalysisPage from './pages/AnalysisPage';
 import LearnPage from './pages/LearnPage';
 import TrainPage from './pages/TrainPage';
+import MastersPage from './pages/MastersPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
               <Route path="/" element={<Navigate to="/replay" replace />} />
               <Route path="/replay" element={<ReplayPage />} />
               <Route path="/analysis" element={<AnalysisPage />} />
+              <Route path="/masters" element={<MastersPage />} />
               <Route path="/train" element={<TrainPage />} />
               <Route path="/learn" element={<LearnPage />} />
               <Route path="*" element={<Navigate to="/replay" replace />} />

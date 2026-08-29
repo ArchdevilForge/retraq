@@ -18,6 +18,7 @@ from services.kline_service import kline_service, TIMEFRAMES
 from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS, detect_template
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
+from services.master_service import master_service
 
 ensure_database()
 
@@ -314,6 +315,108 @@ def get_stats_symbols(request: Request, db: Session = Depends(get_db)):
 def get_stats_overview(request: Request, db: Session = Depends(get_db)):
     dataset_id = get_dataset_id(request, db)
     return trade_analyzer.calculate_stats(db, dataset_id)
+
+
+# --- Masters API ---
+
+
+@app.get("/api/masters")
+def list_masters(
+    search: Optional[str] = None,
+    has_positions_only: bool = Query(True),
+    sort_by: str = Query("roi"),
+    sort_order: str = Query("desc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(30, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    return master_service.list_masters(
+        db,
+        search=search,
+        has_positions_only=has_positions_only,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+    )
+
+
+@app.get("/api/masters/quotes")
+def get_master_quotes():
+    return {"data": master_service.get_quotes()}
+
+
+@app.get("/api/masters/overlay")
+def get_master_overlay(
+    symbol: str,
+    start_ts: int = Query(..., description="Start timestamp (ms)"),
+    end_ts: int = Query(..., description="End timestamp (ms)"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    data = master_service.get_overlay_actions(
+        db,
+        symbol=symbol,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        limit=limit,
+    )
+    return {"symbol": symbol, "data": data}
+
+
+@app.get("/api/masters/{trader_id}")
+def get_master_detail(trader_id: str, db: Session = Depends(get_db)):
+    detail = master_service.get_master_detail(db, trader_id)
+    if not detail:
+        raise HTTPException(404, "Master trader not found")
+    return detail
+
+
+@app.get("/api/masters/{trader_id}/positions")
+def get_master_positions(
+    trader_id: str,
+    symbol: Optional[str] = None,
+    side: Optional[str] = None,
+    start_date: Optional[int] = Query(None, description="Start timestamp (ms)"),
+    end_date: Optional[int] = Query(None, description="End timestamp (ms)"),
+    sort_by: str = Query("opened_at", description="Sort by field: opened_at, roi, pnl"),
+    sort_order: str = Query("desc", description="Sort order: desc or asc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=2000),
+    db: Session = Depends(get_db),
+):
+    return master_service.get_master_positions(
+        db,
+        trader_id=trader_id,
+        symbol=symbol,
+        side=side,
+        start_date=start_date,
+        end_date=end_date,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+    )
+
+
+@app.post("/api/masters/{trader_id}/sync")
+def sync_master_trader(trader_id: str, db: Session = Depends(get_db)):
+    try:
+        return master_service.sync_trader_from_binance(db, trader_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/masters/{trader_id}/clone")
+def clone_master_dataset(trader_id: str, db: Session = Depends(get_db)):
+    try:
+        return master_service.clone_trader_to_dataset(db, trader_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 _static_dir = os.getenv("RETRAQ_STATIC_DIR")

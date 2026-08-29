@@ -341,3 +341,88 @@ describe('importTrades', () => {
     await expect(importTrades(csvFile())).rejects.toThrow('导入失败，请检查文件与模板');
   });
 });
+
+describe('Master Traders API', () => {
+  it('fetchMasterTraders builds query and skips dataset header', async () => {
+    const payload = { total: 1, page: 1, limit: 30, data: [] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).fetchMasterTraders({
+      search: 'Trend',
+      has_positions_only: true,
+      sort_by: 'pnl',
+      sort_order: 'desc',
+    });
+
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toContain('/api/masters?');
+    expect(urlAt(0)).toContain('search=Trend');
+    expect(urlAt(0)).toContain('sort_by=pnl');
+    expect(headersAt(0).get('X-Dataset-Id')).toBeNull();
+  });
+
+  it('fetchMasterTrader calls trader detail endpoint', async () => {
+    const payload = { id: '123', nickname: 'Master1' };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).fetchMasterTrader('123');
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toBe('/api/masters/123');
+  });
+
+  it('fetchMasterPositions calls positions endpoint with filters', async () => {
+    const payload = { total: 0, page: 1, limit: 50, data: [] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).fetchMasterPositions('123', {
+      symbol: 'BTC-USDT',
+      side: 'LONG',
+    });
+
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toContain('/api/masters/123/positions?');
+    expect(urlAt(0)).toContain('symbol=BTC-USDT');
+    expect(urlAt(0)).toContain('side=LONG');
+  });
+
+  it('fetchMasterOverlay calls overlay endpoint', async () => {
+    const payload = { symbol: 'BTC-USDT', data: [] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).fetchMasterOverlay('BTC-USDT', 1000, 2000);
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toContain('/api/masters/overlay?');
+    expect(urlAt(0)).toContain('symbol=BTC-USDT');
+    expect(urlAt(0)).toContain('start_ts=1000');
+    expect(urlAt(0)).toContain('end_ts=2000');
+  });
+
+  it('cloneMasterDataset posts to clone endpoint', async () => {
+    const payload = { success: true, dataset_id: 2, dataset_name: '[实盘] Master', trade_count: 5 };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).cloneMasterDataset('123');
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toBe('/api/masters/123/clone');
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
+  });
+
+  it('syncMasterTrader posts to sync endpoint', async () => {
+    const payload = { success: true, trader_id: '123', new_count: 3, total_positions: 10, nickname: 'Master' };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).syncMasterTrader('123');
+    expect(res).toEqual(payload);
+    expect(urlAt(0)).toBe('/api/masters/123/sync');
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
+  });
+
+  it('fetchMasterQuotes returns quotes array', async () => {
+    const payload = { data: [{ id: 'bitking', author: '比特皇' }] };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    const res = await (await import('./api')).fetchMasterQuotes();
+    expect(res).toEqual(payload.data);
+    expect(urlAt(0)).toBe('/api/masters/quotes');
+  });
+});

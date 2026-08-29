@@ -274,3 +274,195 @@ export interface StatsOverview {
 export async function fetchStats(): Promise<StatsOverview> {
   return apiFetch<StatsOverview>('/api/stats/overview');
 }
+
+// --- Master Traders API ---
+
+export interface MasterTrader {
+  id: string;
+  nickname: string;
+  market: string;
+  avatar_url: string | null;
+  roi: number | null;
+  pnl: number | null;
+  mdd: number | null;
+  win_rate: number | null;
+  sharp_ratio: number | null;
+  aum: number | null;
+  trading_days: number | null;
+  current_copy_count: number | null;
+  max_copy_count: number | null;
+  badge: string | null;
+  tags: string[];
+  equity_chart: Array<{ time: number; value: number }>;
+  equity_chart_30d?: Array<{ time: number; value: number }>;
+  equity_chart_90d?: Array<{ time: number; value: number }>;
+  detail_url: string | null;
+  has_positions: boolean;
+  position_count: number;
+}
+
+export interface MasterPosition {
+  id: number;
+  position_id: string | null;
+  trader_id: string;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  margin_mode: string | null;
+  leverage: number;
+  entry_price: number;
+  close_price: number | null;
+  pnl: number | null;
+  roi: number | null;
+  opened_at: number;
+  closed_at: number | null;
+  max_amount: number | null;
+  closed_amount: number | null;
+  status: string | null;
+}
+
+export interface MasterOverlayAction {
+  id: number;
+  position_id: string | null;
+  trader_id: string;
+  trader_nickname: string;
+  trader_avatar: string | null;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  leverage: number;
+  margin_mode: string | null;
+  entry_price: number;
+  close_price: number | null;
+  pnl: number | null;
+  roi: number | null;
+  opened_at: number;
+  closed_at: number | null;
+}
+
+export interface MasterQuote {
+  id: string;
+  author: string;
+  title: string;
+  tags: string[];
+  summary: string;
+  quotes: string[];
+}
+
+export interface MasterListResponse {
+  total: number;
+  page: number;
+  limit: number;
+  data: MasterTrader[];
+}
+
+export interface MasterPositionsResponse {
+  total: number;
+  page: number;
+  limit: number;
+  data: MasterPosition[];
+}
+
+export async function fetchMasterTraders(params?: {
+  search?: string;
+  has_positions_only?: boolean;
+  sort_by?: string;
+  sort_order?: string;
+  page?: number;
+  limit?: number;
+}): Promise<MasterListResponse> {
+  return apiFetch<MasterListResponse>('/api/masters', {
+    params: {
+      search: params?.search,
+      has_positions_only: params?.has_positions_only !== false,
+      sort_by: params?.sort_by ?? 'roi',
+      sort_order: params?.sort_order ?? 'desc',
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 30,
+    },
+    skipDataset: true,
+  });
+}
+
+export async function fetchMasterTrader(traderId: string): Promise<MasterTrader> {
+  return apiFetch<MasterTrader>(`/api/masters/${traderId}`, { skipDataset: true });
+}
+
+export async function fetchMasterPositions(
+  traderId: string,
+  params?: {
+    symbol?: string;
+    side?: string;
+    start_date?: number;
+    end_date?: number;
+    sort_by?: string;
+    sort_order?: string;
+    page?: number;
+    limit?: number;
+  },
+): Promise<MasterPositionsResponse> {
+  return apiFetch<MasterPositionsResponse>(`/api/masters/${traderId}/positions`, {
+    params: {
+      symbol: params?.symbol,
+      side: params?.side,
+      start_date: params?.start_date,
+      end_date: params?.end_date,
+      sort_by: params?.sort_by ?? 'opened_at',
+      sort_order: params?.sort_order ?? 'desc',
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 50,
+    },
+    skipDataset: true,
+  });
+}
+
+export async function syncMasterTrader(traderId: string): Promise<{
+  success: boolean;
+  trader_id: string;
+  new_count: number;
+  total_positions: number;
+  nickname: string;
+}> {
+  return apiFetch<{
+    success: boolean;
+    trader_id: string;
+    new_count: number;
+    total_positions: number;
+    nickname: string;
+  }>(`/api/masters/${traderId}/sync`, {
+    method: 'POST',
+    skipDataset: true,
+  });
+}
+
+export async function fetchMasterOverlay(
+  symbol: string,
+  start_ts: number,
+  end_ts: number,
+  limit: number = 300,
+): Promise<{ symbol: string; data: MasterOverlayAction[] }> {
+  return apiFetch<{ symbol: string; data: MasterOverlayAction[] }>('/api/masters/overlay', {
+    params: { symbol, start_ts, end_ts, limit },
+    skipDataset: true,
+  });
+}
+
+export async function cloneMasterDataset(traderId: string): Promise<{
+  success: boolean;
+  dataset_id: number;
+  dataset_name: string;
+  trade_count: number;
+}> {
+  return apiFetch<{
+    success: boolean;
+    dataset_id: number;
+    dataset_name: string;
+    trade_count: number;
+  }>(`/api/masters/${traderId}/clone`, {
+    method: 'POST',
+    skipDataset: true,
+  });
+}
+
+export async function fetchMasterQuotes(): Promise<MasterQuote[]> {
+  const res = await apiFetch<{ data: MasterQuote[] }>('/api/masters/quotes', { skipDataset: true });
+  return res.data;
+}

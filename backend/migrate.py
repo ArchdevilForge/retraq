@@ -2,7 +2,7 @@
 from sqlalchemy import bindparam, inspect, text
 
 from database import engine, Base
-from models import Dataset, Trade  # noqa: F401 — register models
+from models import Dataset, Trade, MasterTrader, MasterPosition  # noqa: F401 — register models
 
 LEGACY_DATASET_NAMES = ("默认", "浪哥（示例）")
 
