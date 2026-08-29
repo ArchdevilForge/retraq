@@ -397,16 +397,6 @@ describe('Master Traders API', () => {
     expect(urlAt(0)).toContain('end_ts=2000');
   });
 
-  it('cloneMasterDataset posts to clone endpoint', async () => {
-    const payload = { success: true, dataset_id: 2, dataset_name: '[实盘] Master', trade_count: 5 };
-    fetchMock.mockResolvedValue(jsonResponse(payload));
-
-    const res = await (await import('./api')).cloneMasterDataset('123');
-    expect(res).toEqual(payload);
-    expect(urlAt(0)).toBe('/api/masters/123/clone');
-    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
-  });
-
   it('syncMasterTrader posts to sync endpoint', async () => {
     const payload = { success: true, trader_id: '123', new_count: 3, total_positions: 10, nickname: 'Master' };
     fetchMock.mockResolvedValue(jsonResponse(payload));

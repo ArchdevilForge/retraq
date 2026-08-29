@@ -30,12 +30,6 @@ function Navbar() {
               <NavLink to="/analysis" className={({ isActive }) => navTabClass(isActive)}>
                 分析
               </NavLink>
-              <NavLink to="/masters" className={({ isActive }) => navTabClass(isActive)}>
-                高手
-              </NavLink>
-              <NavLink to="/learn" className={({ isActive }) => navTabClass(isActive)}>
-                学习
-              </NavLink>
             </div>
           </nav>
         </div>

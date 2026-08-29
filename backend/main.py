@@ -51,7 +51,7 @@ def list_datasets(db: Session = Depends(get_db)):
     rows = db.query(Dataset).order_by(Dataset.id).all()
     return {
         "data": [
-            {"id": d.id, "name": d.name, "created_at": d.created_at}
+            {"id": d.id, "name": d.name, "owner": d.owner, "created_at": d.created_at}
             for d in rows
         ]
     }
@@ -68,7 +68,7 @@ def update_dataset(dataset_id: int, body: DatasetUpdate, db: Session = Depends(g
     d.name = body.name  # type: ignore[assignment]
     db.commit()
     db.refresh(d)
-    return {"id": d.id, "name": d.name, "created_at": d.created_at}
+    return {"id": d.id, "name": d.name, "owner": d.owner, "created_at": d.created_at}
 
 
 @app.delete("/api/datasets/{dataset_id}")
@@ -405,16 +405,6 @@ def sync_master_trader(trader_id: str, db: Session = Depends(get_db)):
         return master_service.sync_trader_from_binance(db, trader_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-@app.post("/api/masters/{trader_id}/clone")
-def clone_master_dataset(trader_id: str, db: Session = Depends(get_db)):
-    try:
-        return master_service.clone_trader_to_dataset(db, trader_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, str(e))
 

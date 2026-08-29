@@ -114,6 +114,8 @@ export interface TradesResponse {
 export interface Dataset {
   id: number;
   name: string;
+  /** Trade subject: self | master:{trader_id} | sim */
+  owner: string;
   created_at: string | null;
 }
 
@@ -441,23 +443,6 @@ export async function fetchMasterOverlay(
 ): Promise<{ symbol: string; data: MasterOverlayAction[] }> {
   return apiFetch<{ symbol: string; data: MasterOverlayAction[] }>('/api/masters/overlay', {
     params: { symbol, start_ts, end_ts, limit },
-    skipDataset: true,
-  });
-}
-
-export async function cloneMasterDataset(traderId: string): Promise<{
-  success: boolean;
-  dataset_id: number;
-  dataset_name: string;
-  trade_count: number;
-}> {
-  return apiFetch<{
-    success: boolean;
-    dataset_id: number;
-    dataset_name: string;
-    trade_count: number;
-  }>(`/api/masters/${traderId}/clone`, {
-    method: 'POST',
     skipDataset: true,
   });
 }

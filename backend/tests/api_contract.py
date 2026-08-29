@@ -27,7 +27,7 @@ TRADE_FILL_FIELDS = frozenset(
     }
 )
 
-DATASET_FIELDS = frozenset({"id", "name", "created_at"})
+DATASET_FIELDS = frozenset({"id", "name", "owner", "created_at"})
 
 STATS_OVERVIEW_FIELDS = frozenset(
     {

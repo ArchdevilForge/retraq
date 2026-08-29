@@ -10,8 +10,6 @@ export function readStoredTheme(): ThemeMode | null {
 export function resolveInitialTheme(): ThemeMode {
   const stored = readStoredTheme();
   if (stored) return stored;
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
+  // 深色为默认主题（docs/DESIGN.md §3）；用户显式选择后存 localStorage。
+  return 'dark';
 }

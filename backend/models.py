@@ -8,6 +8,8 @@ class Dataset(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(128), nullable=False, unique=True)
+    # Trade subject: self (own trades) | master:{trader_id} | sim (training replay)
+    owner = Column(String(64), nullable=False, default="self", server_default="self")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import desc, asc
 from sqlalchemy.orm import Session
 
-from models import MasterTrader, MasterPosition, Dataset, Trade
+from models import MasterTrader, MasterPosition
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
 CONTRACT_MASTER_QUOTES = [
@@ -361,64 +361,6 @@ class MasterService:
                 }
             )
         return results
-
-    @staticmethod
-    def clone_trader_to_dataset(db: Session, trader_id: str) -> dict:
-        trader = db.query(MasterTrader).filter(MasterTrader.id == trader_id).first()
-        if not trader:
-            raise ValueError("Master trader not found")
-
-        positions = (
-            db.query(MasterPosition)
-            .filter(MasterPosition.trader_id == trader_id)
-            .order_by(MasterPosition.opened_at.asc())
-            .all()
-        )
-
-        if not positions:
-            raise ValueError("Trader has no positions to clone")
-
-        # Create dataset
-        ds_name = f"[实盘] {trader.nickname} ({len(positions)}笔)"[:128]
-        existing = db.query(Dataset).filter(Dataset.name == ds_name).first()
-        if existing:
-            dataset = existing
-            # Clean old trades in this dataset
-            db.query(Trade).filter(Trade.dataset_id == dataset.id).delete()
-        else:
-            dataset = Dataset(name=ds_name)
-            db.add(dataset)
-            db.flush()
-
-        trade_objs = []
-        for p in positions:
-            trade_objs.append(
-                Trade(
-                    dataset_id=dataset.id,
-                    symbol=p.symbol,
-                    direction=p.side,
-                    leverage=p.leverage or 20.0,
-                    entry_price=p.entry_price,
-                    exit_price=p.close_price,
-                    profit=p.pnl,
-                    profit_rate=p.roi,
-                    entry_time=p.opened_at,
-                    exit_time=p.closed_at,
-                    margin=(p.entry_price * (p.max_amount or 1.0) / (p.leverage or 20.0))
-                    if p.max_amount
-                    else None,
-                )
-            )
-
-        db.bulk_save_objects(trade_objs)
-        db.commit()
-
-        return {
-            "success": True,
-            "dataset_id": dataset.id,
-            "dataset_name": dataset.name,
-            "trade_count": len(trade_objs),
-        }
 
     @staticmethod
     def get_quotes() -> list[dict]:

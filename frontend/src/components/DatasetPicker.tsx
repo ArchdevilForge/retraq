@@ -26,6 +26,21 @@ export default function DatasetPicker() {
   const active = datasets.find((p) => p.id === activeDatasetId);
   const emptyLabel = error ? '表格加载失败' : '无表格';
 
+  // owner 分组：self=我的 | master:*=高手 | sim=训练（docs/PRODUCT.md §三）
+  const ownerGroups = [
+    {
+      key: 'self' as const,
+      label: '我的',
+      items: datasets.filter((d) => !d.owner.startsWith('master:') && d.owner !== 'sim'),
+    },
+    {
+      key: 'masters' as const,
+      label: '高手',
+      items: datasets.filter((d) => d.owner.startsWith('master:')),
+    },
+    { key: 'sim' as const, label: '训练', items: datasets.filter((d) => d.owner === 'sim') },
+  ];
+
   const updatePanelPos = () => {
     const el = triggerRef.current;
     if (!el) return;
@@ -92,24 +107,36 @@ export default function DatasetPicker() {
         style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width }}
       >
         <ul role="listbox">
-          {datasets.map((p) => {
-            const selected = p.id === activeDatasetId;
+          {ownerGroups.map(({ key, label, items }) => {
+            if (items.length === 0) return null;
             return (
-              <li key={p.id} role="option" aria-selected={selected}>
-                <button
-                  type="button"
-                  className={`oc-dropdown__item${selected ? ' oc-dropdown__item--selected' : ''}`}
-                  title={p.name}
-                  onClick={() => {
-                    setActiveDatasetId(p.id);
-                    setOpen(false);
-                  }}
-                >
-                  <span
-                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
-                  />
-                  <span className="min-w-0 break-all leading-snug">{p.name}</span>
-                </button>
+              <li key={key} aria-hidden={false}>
+                <div className="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-weak)]">
+                  {label}
+                </div>
+                <ul role="group" aria-label={label}>
+                  {items.map((p) => {
+                    const selected = p.id === activeDatasetId;
+                    return (
+                      <li key={p.id} role="option" aria-selected={selected}>
+                        <button
+                          type="button"
+                          className={`oc-dropdown__item${selected ? ' oc-dropdown__item--selected' : ''}`}
+                          title={p.name}
+                          onClick={() => {
+                            setActiveDatasetId(p.id);
+                            setOpen(false);
+                          }}
+                        >
+                          <span
+                            className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
+                          />
+                          <span className="min-w-0 break-all leading-snug">{p.name}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
             );
           })}

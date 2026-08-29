@@ -1,6 +1,6 @@
 """Tests for Master Traders and Futures Positions API."""
 
-from models import MasterTrader, MasterPosition, Dataset, Trade
+from models import MasterTrader, MasterPosition, Dataset
 
 
 def _seed_sample_masters(db_session):
@@ -137,22 +137,24 @@ def test_master_overlay(client, db_session):
     assert data["data"][0]["trader_nickname"] == "TrendMaster"
 
 
-def test_clone_master_dataset(client, db_session):
+def test_clone_master_dataset_removed(client, db_session):
+    """owner 隔离后，克隆高手交易到数据集的路径已废弃（docs/PRODUCT.md §三）。"""
     _seed_sample_masters(db_session)
 
     res = client.post("/api/masters/trader_001/clone")
+    assert res.status_code in (404, 405)
+
+
+def test_datasets_list_exposes_owner(client, db_session):
+    db_session.add(Dataset(name="默认数据集"))
+    db_session.commit()
+
+    res = client.get("/api/datasets")
     assert res.status_code == 200
-    data = res.json()
-    assert data["success"] is True
-    assert data["trade_count"] == 2
-
-    # Verify dataset and trades created
-    ds = db_session.query(Dataset).filter(Dataset.id == data["dataset_id"]).first()
-    assert ds is not None
-    assert "TrendMaster" in ds.name
-
-    trades = db_session.query(Trade).filter(Trade.dataset_id == ds.id).all()
-    assert len(trades) == 2
+    rows = res.json()["data"]
+    assert rows
+    for row in rows:
+        assert row["owner"] == "self"
 
 
 def test_master_quotes(client):

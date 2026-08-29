@@ -4,9 +4,7 @@ import { DatasetProvider } from './context/DatasetContext';
 import { ToastProvider } from './components/ToastHost';
 import ReplayPage from './pages/ReplayPage';
 import AnalysisPage from './pages/AnalysisPage';
-import LearnPage from './pages/LearnPage';
 import TrainPage from './pages/TrainPage';
-import MastersPage from './pages/MastersPage';
 
 function App() {
   return (
@@ -19,9 +17,10 @@ function App() {
               <Route path="/" element={<Navigate to="/replay" replace />} />
               <Route path="/replay" element={<ReplayPage />} />
               <Route path="/analysis" element={<AnalysisPage />} />
-              <Route path="/masters" element={<MastersPage />} />
               <Route path="/train" element={<TrainPage />} />
-              <Route path="/learn" element={<LearnPage />} />
+              {/* 高手并入复盘工作台、学习转为场景内提示（docs/PRODUCT.md §九） */}
+              <Route path="/masters" element={<Navigate to="/replay" replace />} />
+              <Route path="/learn" element={<Navigate to="/replay" replace />} />
               <Route path="*" element={<Navigate to="/replay" replace />} />
             </Routes>
           </main>

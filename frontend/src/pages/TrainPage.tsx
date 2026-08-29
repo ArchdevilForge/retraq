@@ -318,13 +318,9 @@ export default function TrainPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden p-2">
-      <div
-        className="oc-workbench min-h-0 flex-1 overflow-hidden"
-        data-list-open={setupOpen}
-        data-detail-open={detailOpen}
-      >
+      <div className="oc-canvas min-h-0 flex-1 overflow-hidden">
         <aside
-          className={`panel flex min-h-0 min-w-0 flex-col overflow-hidden${setupOpen ? '' : ' panel--collapsed'}`}
+          className={`oc-float-panel oc-float-panel--left${setupOpen ? '' : ' oc-float-panel--hidden'}`}
           aria-hidden={!setupOpen}
         >
           <header className="panel-header flex shrink-0 items-center justify-between gap-2">
@@ -495,11 +491,7 @@ export default function TrainPage() {
           </div>
         </aside>
 
-        <section
-          className={`panel relative flex min-h-0 min-w-0 flex-col overflow-hidden${
-            setupOpen ? '' : ' pl-7'
-          }${detailOpen ? '' : ' pr-7'}`}
-        >
+        <section className="oc-canvas__chart">
           {!setupOpen ? (
             <button
               type="button"
@@ -603,7 +595,7 @@ export default function TrainPage() {
         </section>
 
         <aside
-          className={`panel flex min-h-0 min-w-0 flex-col overflow-hidden${detailOpen ? '' : ' panel--collapsed'}`}
+          className={`oc-float-panel oc-float-panel--right${detailOpen ? '' : ' oc-float-panel--hidden'}`}
           aria-hidden={!detailOpen}
         >
           <header className="panel-header flex shrink-0 items-center justify-between gap-2">

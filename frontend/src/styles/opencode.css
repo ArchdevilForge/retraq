@@ -1079,6 +1079,66 @@
   }
 }
 
+/* ---- Full-screen chart canvas + floating panels (v2, docs/DESIGN.md §2) ---- */
+.oc-canvas {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Chart is the background layer; panels float above it. */
+.oc-canvas__chart {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.oc-float-panel {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  z-index: 30;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  width: min(340px, 28vw);
+  background: var(--background-weak);
+  border: 2px solid var(--border-strong-base);
+}
+
+.oc-float-panel--left {
+  left: 8px;
+}
+
+.oc-float-panel--right {
+  right: 8px;
+  width: min(380px, 30vw);
+}
+
+.oc-float-panel--hidden {
+  display: none;
+}
+
+/* Floating transport/toolbar bar above the canvas (train replay controls). */
+.oc-float-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 25;
+  display: flex;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--background-weak);
+  border: 2px solid var(--border-strong-base);
+}
+
 /* ---- Workbench grid (shared 2px borders like opencode.ai sections) ---- */
 .oc-workbench {
   display: grid;

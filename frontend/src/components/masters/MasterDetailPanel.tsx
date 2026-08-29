@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ExternalLink,
-  Copy,
   TrendingUp,
   TrendingDown,
   Clock,
@@ -12,13 +11,11 @@ import {
 import type { MasterTrader, MasterPosition, MasterQuote } from '../../services/api';
 import {
   fetchMasterPositions,
-  cloneMasterDataset,
   fetchMasterQuotes,
   syncMasterTrader,
 } from '../../services/api';
 import { fmtMoney, fmtDateTime, fmtDurationMs } from '../../utils/format';
 import { useToast } from '../ToastHost';
-import { useDataset } from '../../context/DatasetContext';
 
 interface Props {
   trader: MasterTrader | null;
@@ -36,7 +33,6 @@ export default function MasterDetailPanel({
   onHide,
 }: Props) {
   const { toast } = useToast();
-  const { refreshDatasets, setActiveDatasetId } = useDataset();
 
   const [activeTab, setActiveTab] = useState<TabKey>('positions');
   const [positions, setPositions] = useState<MasterPosition[]>([]);
@@ -47,7 +43,6 @@ export default function MasterDetailPanel({
   const [posSortOrder, setPosSortOrder] = useState<'desc' | 'asc'>('desc');
   const [sideFilter, setSideFilter] = useState<string>('');
   const [symbolSearch, setSymbolSearch] = useState('');
-  const [cloning, setCloning] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   // Master Quotes State
@@ -114,21 +109,8 @@ export default function MasterDetailPanel({
     }
   };
 
-  // Clone to User Dataset
-  const handleClone = async () => {
-    if (!trader) return;
-    setCloning(true);
-    try {
-      const res = await cloneMasterDataset(trader.id);
-      await refreshDatasets();
-      setActiveDatasetId(res.dataset_id);
-      toast(`已成功克隆「${trader.nickname}」的 ${res.trade_count} 笔交割单为本地数据集！`, 'success');
-    } catch (err: unknown) {
-      toast(err instanceof Error ? err.message : '克隆数据集失败', 'error');
-    } finally {
-      setCloning(false);
-    }
-  };
+  // Clone to User Dataset removed: datasets are owner-scoped (self | master:* | sim)
+  // and master replay happens in-place on the unified workbench (docs/PRODUCT.md §五).
 
   if (!trader) {
     return (
@@ -205,16 +187,6 @@ export default function MasterDetailPanel({
             >
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               <span>{syncing ? '同步中…' : '更新最新交割单'}</span>
-            </button>
-            <button
-              type="button"
-              className="oc-btn oc-btn--sm oc-btn--primary shrink-0 flex items-center gap-1 text-[11px]"
-              onClick={handleClone}
-              disabled={cloning || trader.position_count === 0}
-              title="克隆此交易员的全部交割单为本地 Dataset，以便在复盘和分析页面深度剖析"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              <span>{cloning ? '克隆中…' : '导入为我的复盘'}</span>
             </button>
             {onHide && (
               <button

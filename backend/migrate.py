@@ -186,9 +186,22 @@ def _reset_kline_cache() -> None:
         conn.execute(text("DELETE FROM klines"))
 
 
+def _add_dataset_owner_column() -> None:
+    """Datasets gained an owner discriminator (self | master:* | sim); legacy rows are self."""
+    if not _table_exists("datasets"):
+        return
+    if _column_exists("datasets", "owner"):
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE datasets ADD COLUMN owner VARCHAR(64) NOT NULL DEFAULT 'self'")
+        )
+
+
 def ensure_database() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_legacy_profiles()
+    _add_dataset_owner_column()
     if _read_user_version() < SCHEMA_VERSION:
         # One-shot repairs; never repeated, so a user dataset named 默认 survives later boots.
         _purge_legacy_default_datasets()
