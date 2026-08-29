@@ -541,3 +541,27 @@ export async function createDrawing(
 export async function deleteDrawing(id: number): Promise<void> {
   await apiFetch<void>(`/api/drawings/${id}`, { method: 'DELETE', skipDataset: true });
 }
+
+/* ---- Binance auto sync (docs/PRODUCT.md §四) ---- */
+
+export interface BinanceSyncStatus {
+  configured: boolean;
+  dataset_id: number | null;
+  trade_count: number;
+}
+
+export interface BinanceSyncResult {
+  success: boolean;
+  dataset_id: number;
+  dataset_name: string;
+  new_fills: number;
+  trade_count: number;
+}
+
+export async function fetchBinanceSyncStatus(): Promise<BinanceSyncStatus> {
+  return apiFetch<BinanceSyncStatus>('/api/binance/sync/status', { skipDataset: true });
+}
+
+export async function runBinanceSync(): Promise<BinanceSyncResult> {
+  return apiFetch<BinanceSyncResult>('/api/binance/sync', { method: 'POST', skipDataset: true });
+}

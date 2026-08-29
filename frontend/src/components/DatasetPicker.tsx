@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Database, Upload } from 'lucide-react';
+import { ChevronDown, Database, RefreshCw, Upload } from 'lucide-react';
 import { useDataset } from '../context/DatasetContext';
-import { importTrades } from '../services/api';
+import { importTrades, runBinanceSync } from '../services/api';
 import { useToast } from './ToastHost';
 
 function truncateMiddle(name: string, max = 36): string {
@@ -21,6 +21,7 @@ export default function DatasetPicker() {
   const panelRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 320 });
 
   const active = datasets.find((p) => p.id === activeDatasetId);
@@ -97,6 +98,25 @@ export default function DatasetPicker() {
     }
   };
 
+  const onBinanceSync = async () => {
+    setSyncing(true);
+    try {
+      const r = await runBinanceSync();
+      toast(`币安同步完成：新增 ${r.new_fills} 笔成交，共 ${r.trade_count} 笔持仓`, 'success');
+      notifyTradesChanged();
+      try {
+        await refreshDatasets();
+      } catch {
+        /* list refresh failure is not a sync failure */
+      }
+      setOpen(false);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '币安同步失败', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const listPanel =
     open &&
     datasets.length > 0 &&
@@ -141,6 +161,18 @@ export default function DatasetPicker() {
             );
           })}
         </ul>
+        <div className="mt-1 border-t-2 border-[var(--border-weaker-base)] pt-1.5">
+          <button
+            type="button"
+            className="oc-dropdown__item w-full"
+            title="增量拉取币安合约成交（需在 backend/.env 配置只读 API Key）"
+            onClick={() => void onBinanceSync()}
+            disabled={syncing}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 shrink-0 oc-text-brand ${syncing ? 'animate-spin' : ''}`} aria-hidden />
+            <span className="min-w-0 leading-snug">{syncing ? '同步中…' : '同步币安合约'}</span>
+          </button>
+        </div>
       </div>,
       document.body,
     );

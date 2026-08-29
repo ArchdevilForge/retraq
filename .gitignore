@@ -14,3 +14,6 @@ __pycache__/
 
 # Binance account exports (contain PII)
 Binance-*.xlsx
+# Binance API credentials (read-only key) — never commit
+backend/.env
+.env

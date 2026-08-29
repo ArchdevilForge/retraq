@@ -19,6 +19,7 @@ from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS, 
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 from services.master_service import master_service
+from services.binance_sync_service import SYNC_DATASET_NAME, binance_sync_service, get_credentials
 from services.annotation_service import (
     ERROR_TAG_PRESETS,
     EMOTION_PRESETS,
@@ -29,6 +30,31 @@ from services.annotation_service import (
 )
 
 ensure_database()
+
+
+def _auto_sync_on_startup() -> None:
+    """Fire-and-forget incremental sync at boot; never blocks or crashes startup."""
+    import threading
+
+    def run():
+        try:
+            if get_credentials() is None:
+                return
+            from database import SessionLocal
+
+            db = SessionLocal()
+            try:
+                result = binance_sync_service.sync(db)
+                print(f"✅ Binance auto-sync: +{result['new_fills']} fills → {result['trade_count']} trades")
+            finally:
+                db.close()
+        except Exception as e:  # noqa: BLE001 — startup must survive any sync failure
+            print(f"⚠️ Binance auto-sync skipped: {e}")
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+_auto_sync_on_startup()
 
 app = FastAPI(title="Trading Replay API")
 
@@ -111,6 +137,28 @@ def delete_drawing(drawing_id: int, db: Session = Depends(get_db)):
     if not annotation_service.delete_drawing(db, drawing_id):
         raise HTTPException(404, "Drawing not found")
     return {"ok": True}
+
+
+@app.get("/api/binance/sync/status")
+def binance_sync_status(db: Session = Depends(get_db)):
+    ds = db.query(Dataset).filter(Dataset.name == SYNC_DATASET_NAME).first()
+    return {
+        "configured": get_credentials() is not None,
+        "dataset_id": ds.id if ds else None,
+        "trade_count": db.query(Trade).filter(Trade.dataset_id == ds.id).count() if ds else 0,
+    }
+
+
+@app.post("/api/binance/sync")
+def binance_sync(db: Session = Depends(get_db)):
+    try:
+        return binance_sync_service.sync(db)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except ccxt.AuthenticationError as e:
+        raise HTTPException(401, f"币安 API 认证失败，请检查 Key 与 Secret：{e}")
+    except ccxt.BaseError as e:
+        raise HTTPException(502, f"币安接口请求失败：{e}")
 
 
 @app.get("/api/import/templates")
