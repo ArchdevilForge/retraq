@@ -4,6 +4,7 @@ import type { Trade, TradeFill } from '../services/api';
 import { fetchTradeFills } from '../services/api';
 import { fmtDateTime, fmtDurationMs, fmtMoney, fmtPct } from '../utils/format';
 import { fmtPrice, isSyntheticFills } from '../utils/fills';
+import AnnotationEditor from './AnnotationEditor';
 
 function DetailRow({ label, value, valueClassName = '' }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -110,6 +111,7 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
             </ul>
           </div>
         ) : null}
+        <AnnotationEditor subjectType="trade" subjectId={trade.id} />
       </div>
     </div>
   );

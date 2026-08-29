@@ -7,8 +7,8 @@ import {
   type SeriesMarker,
   type Time,
 } from 'lightweight-charts';
-import { Eraser, Maximize2, Minimize2, Minus, Ruler } from 'lucide-react';
-import type { Kline, Timeframe } from '../../services/api';
+import { Eraser, Maximize2, Minimize2, Minus, Percent, Ruler, Square, TrendingUp } from 'lucide-react';
+import type { ChartDrawing, DrawingKind, DrawingPoint, Kline, Timeframe } from '../../services/api';
 import { TIMEFRAMES } from '../../services/api';
 import { mountCandleVolumeChart } from '../../utils/candleChart';
 import {
@@ -44,6 +44,14 @@ export type ChartCompare = {
   error?: string | null;
 };
 
+type DrawMode = 'none' | 'hline' | 'ruler' | 'trend' | 'region' | 'fib';
+
+const TWO_POINT_HINTS: Partial<Record<DrawMode, string>> = {
+  trend: '趋势线：点两下确定两端',
+  region: '区域：点两下圈定区间',
+  fib: '斐波那契：点两下确定波段',
+};
+
 type Props = {
   symbol: string;
   timeframe: Timeframe;
@@ -66,6 +74,12 @@ type Props = {
   onTimeframeChange?: (tf: Timeframe) => void;
   /** Toolbar shows timeframe tabs (replay) or a plain label (train controls its own bar). */
   showTimeframeTabs?: boolean;
+  /** Persisted drawings bound to symbol + time region (docs/DESIGN.md §6). */
+  drawings?: ChartDrawing[];
+  /** Called when the user completes a drawing with the shape tools. */
+  onUserDrawing?: (kind: DrawingKind, payload: DrawingPoint[]) => void;
+  /** Eraser pressed: caller decides persistence scope (falls back to in-memory clear). */
+  onEraseDrawings?: () => void;
 };
 
 type ChartBundle = {
@@ -151,6 +165,9 @@ export default function ChartCanvas({
   onClearCompare,
   onTimeframeChange,
   showTimeframeTabs = true,
+  drawings,
+  onUserDrawing,
+  onEraseDrawings,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -171,6 +188,10 @@ export default function ChartCanvas({
   useEffect(() => {
     timeframeRef.current = timeframe;
   }, [timeframe]);
+  const drawingsRef = useRef<ChartDrawing[]>(drawings ?? []);
+  useEffect(() => {
+    drawingsRef.current = drawings ?? [];
+  }, [drawings]);
   const syncingRangeRef = useRef(false);
   const followEndRef = useRef(true);
   const prevKlineLenRef = useRef(0);
@@ -179,7 +200,7 @@ export default function ChartCanvas({
   const pendingRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const [chartEpoch, setChartEpoch] = useState(0);
   const [chartTheme, setChartTheme] = useState(() => readChartTheme());
-  const [drawMode, setDrawMode] = useState<'none' | 'hline' | 'ruler'>('none');
+  const [drawMode, setDrawMode] = useState<DrawMode>('none');
   const [rulerHint, setRulerHint] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,11 +241,113 @@ export default function ChartCanvas({
     return { time: c.time, price: c.price, x, y };
   }, []);
 
-  const paintRulerOverlay = useCallback(() => {
+  const mapDrawingPoint = useCallback(
+    (p: DrawingPoint): { x: number; y: number } | null => {
+      const chart = mainApi.current?.chart;
+      const series = mainApi.current?.series;
+      if (!chart || !series) return null;
+      const x = chart.timeScale().timeToCoordinate((p.time_ms / 1000) as Time);
+      const y = series.priceToCoordinate(p.price);
+      if (x == null || y == null) return null;
+      return { x, y };
+    },
+    [],
+  );
+
+  const drawPersistedShape = useCallback(
+    (ctx: CanvasRenderingContext2D, drawing: ChartDrawing) => {
+      const style = rulerStyleFromTheme(readChartTheme());
+      const points = drawing.payload.map(mapDrawingPoint);
+      if (points.some((p) => p == null)) return;
+      const pts = points as { x: number; y: number }[];
+
+      if (drawing.kind === 'hline' && pts.length === 1) {
+        ctx.strokeStyle = style.rulerStroke;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(0, pts[0].y);
+        ctx.lineTo(ctx.canvas.width, pts[0].y);
+        ctx.stroke();
+        return;
+      }
+      if (pts.length !== 2) return;
+      const [a, b] = pts;
+
+      if (drawing.kind === 'trend') {
+        ctx.strokeStyle = style.rulerStroke;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        return;
+      }
+      if (drawing.kind === 'region') {
+        ctx.fillStyle = style.rulerFill;
+        ctx.strokeStyle = style.rulerStroke;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        ctx.fillRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+        ctx.strokeRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+        return;
+      }
+      if (drawing.kind === 'fib') {
+        const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+        const left = Math.min(a.x, b.x);
+        const right = Math.max(a.x, b.x);
+        ctx.font = '10px var(--oc-font-mono, monospace)';
+        for (const lv of levels) {
+          const priceA = drawing.payload[0].price;
+          const priceB = drawing.payload[1].price;
+          const price = priceA + (priceB - priceA) * lv;
+          const y = seriesPriceToY(price);
+          if (y == null) continue;
+          ctx.strokeStyle = style.rulerStroke;
+          ctx.globalAlpha = lv === 0 || lv === 1 ? 0.9 : 0.55;
+          ctx.setLineDash(lv === 0 || lv === 1 ? [] : [4, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(left, y);
+          ctx.lineTo(right, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = style.rulerLabelBg;
+          ctx.fillRect(right + 2, y - 7, 44, 14);
+          ctx.fillStyle = style.rulerLabelText;
+          ctx.fillText(`${(lv * 100).toFixed(1)}%`, right + 5, y + 3.5);
+        }
+        ctx.setLineDash([]);
+      }
+    },
+    // series lookup is stable enough for paint time; direct access avoids stale closures
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapDrawingPoint],
+  );
+
+  function seriesPriceToY(price: number): number | null {
+    const series = mainApi.current?.series;
+    if (!series) return null;
+    return series.priceToCoordinate(price);
+  }
+
+  const paintOverlay = useCallback(() => {
     const canvas = rulerCanvasRef.current;
     const container = mainRef.current;
     if (!canvas || !container) return;
     syncOverlayCanvasSize(canvas, container);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    clearRulerCanvas(canvas);
+
+    // persisted drawings first (bind to symbol + time region)
+    for (const drawing of drawingsRef.current) {
+      drawPersistedShape(ctx, drawing);
+    }
+
     const step = Math.floor(TIMEFRAME_MS[timeframeRef.current] / 1000);
     const rulerStyle = rulerStyleFromTheme(readChartTheme());
     const pair = rulerResultRef.current;
@@ -241,20 +364,11 @@ export default function ChartCanvas({
       const a = remapRulerCorner(start) ?? start;
       const b = remapRulerCorner(preview) ?? preview;
       drawRulerOnCanvas(canvas, a, b, measureRuler(a, b, step), rulerStyle);
-      return;
     }
-    clearRulerCanvas(canvas);
-  }, [remapRulerCorner]);
+  }, [remapRulerCorner, drawPersistedShape]);
 
-  const clearRuler = useCallback(() => {
-    rulerCornerRef.current = null;
-    rulerPreviewRef.current = null;
-    rulerResultRef.current = null;
-    clearRulerCanvas(rulerCanvasRef.current);
-    setRulerHint('');
-  }, []);
-
-  const clearUserDrawnLines = useCallback(() => {
+  const clearLocalAnnotations = useCallback(() => {
+    // in-memory artifacts only; persisted drawings are owned by the caller
     const series = mainApi.current?.series;
     if (series) {
       for (const line of userPriceLinesRef.current) {
@@ -266,15 +380,30 @@ export default function ChartCanvas({
       }
     }
     userPriceLinesRef.current = [];
-    clearRuler();
-  }, [clearRuler]);
+    rulerCornerRef.current = null;
+    rulerPreviewRef.current = null;
+    rulerResultRef.current = null;
+    setRulerHint('');
+    paintOverlay();
+  }, [paintOverlay]);
+
+  const handleErase = useCallback(() => {
+    clearLocalAnnotations();
+    // eraser deletes persisted drawings for this symbol via the caller
+    onEraseDrawings?.();
+  }, [clearLocalAnnotations, onEraseDrawings]);
+
+  // repaint persisted drawings whenever the list (or theme they're drawn in) changes
+  useEffect(() => {
+    paintOverlay();
+  }, [drawings, chartTheme, paintOverlay]);
 
   useEffect(() => {
-    clearUserDrawnLines();
+    clearLocalAnnotations();
     didInitViewRef.current = false;
     followEndRef.current = true;
     prevKlineLenRef.current = 0;
-  }, [symbol, clearUserDrawnLines]);
+  }, [symbol, clearLocalAnnotations]);
 
   // mount main
   useEffect(() => {
@@ -312,7 +441,7 @@ export default function ChartCanvas({
         width: mainRef.current.clientWidth,
         height: mainRef.current.clientHeight,
       });
-      if (rulerResultRef.current || rulerCornerRef.current) paintRulerOverlay();
+      if (rulerResultRef.current || rulerCornerRef.current) paintOverlay();
       syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
     });
     ro.observe(mainRef.current);
@@ -326,7 +455,7 @@ export default function ChartCanvas({
     };
     // playback only toggles with the mode; the engine remounts if it ever changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paintRulerOverlay]);
+  }, [paintOverlay]);
 
   // mount compare
   useEffect(() => {
@@ -412,8 +541,8 @@ export default function ChartCanvas({
     prevKlineLenRef.current = len;
 
     syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
-    if (rulerResultRef.current || rulerCornerRef.current) paintRulerOverlay();
-  }, [klines, markers, chartTheme, playback, visibleRange, paintRulerOverlay, chartEpoch]);
+    if (rulerResultRef.current || rulerCornerRef.current) paintOverlay();
+  }, [klines, markers, chartTheme, playback, visibleRange, paintOverlay, chartEpoch]);
 
   // deferred visible range (requested before data arrived)
   useEffect(() => {
@@ -493,35 +622,53 @@ export default function ChartCanvas({
       if (time == null) return;
 
       if (drawMode === 'hline') {
-        const line = series.createPriceLine({
-          price,
-          color: readChartTheme().hline,
-          lineWidth: 3,
-          lineStyle: 0,
-          axisLabelVisible: true,
-          title: price.toFixed(4),
-        });
-        userPriceLinesRef.current.push(line);
+        if (onUserDrawing) {
+          // Persisted: binds to symbol only; time_ms records where it was placed.
+          onUserDrawing('hline', [{ time_ms: Number(time) * 1000, price }]);
+        } else {
+          // In-memory fallback (no persistence wired, e.g. training mode)
+          const line = series.createPriceLine({
+            price,
+            color: readChartTheme().hline,
+            lineWidth: 3,
+            lineStyle: 0,
+            axisLabelVisible: true,
+            title: price.toFixed(4),
+          });
+          userPriceLinesRef.current.push(line);
+        }
         setDrawMode('none');
         e.preventDefault();
         e.stopPropagation();
         return;
       }
 
-      if (drawMode === 'ruler') {
+      if (drawMode === 'ruler' || TWO_POINT_HINTS[drawMode]) {
         const corner: RulerCorner = { time, price, x, y };
         const pending = rulerCornerRef.current;
         if (!pending) {
           rulerCornerRef.current = corner;
           rulerPreviewRef.current = null;
           setRulerHint('移动鼠标预览，再点确定');
-        } else {
+        } else if (drawMode === 'ruler') {
           rulerResultRef.current = { a: pending, b: corner };
           rulerCornerRef.current = null;
           rulerPreviewRef.current = null;
           setDrawMode('none');
           setRulerHint('');
-          paintRulerOverlay();
+          paintOverlay();
+        } else {
+          // shape tool: complete and persist
+          const kind = drawMode as DrawingKind;
+          onUserDrawing?.(kind, [
+            { time_ms: Number(pending.time) * 1000, price: pending.price },
+            { time_ms: Number(corner.time) * 1000, price: corner.price },
+          ]);
+          rulerCornerRef.current = null;
+          rulerPreviewRef.current = null;
+          setDrawMode('none');
+          setRulerHint('');
+          paintOverlay();
         }
         e.preventDefault();
         e.stopPropagation();
@@ -529,11 +676,11 @@ export default function ChartCanvas({
     };
     el.addEventListener('pointerdown', onPointerDown, { capture: true });
     return () => el.removeEventListener('pointerdown', onPointerDown, { capture: true });
-  }, [drawMode, paintRulerOverlay]);
+  }, [drawMode, paintOverlay, onUserDrawing]);
 
   useEffect(() => {
     const el = mainRef.current;
-    if (!el || drawMode !== 'ruler') return;
+    if (!el || (drawMode !== 'ruler' && !TWO_POINT_HINTS[drawMode])) return;
     let raf = 0;
     const onPointerMove = (e: PointerEvent) => {
       if (!rulerCornerRef.current) return;
@@ -548,14 +695,14 @@ export default function ChartCanvas({
       if (price == null || time == null) return;
       rulerPreviewRef.current = { time, price, x, y };
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => paintRulerOverlay());
+      raf = requestAnimationFrame(() => paintOverlay());
     };
     window.addEventListener('pointermove', onPointerMove);
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       cancelAnimationFrame(raf);
     };
-  }, [drawMode, paintRulerOverlay]);
+  }, [drawMode, paintOverlay]);
 
   useEffect(() => {
     const onFs = () => setIsFullscreen(Boolean(document.fullscreenElement === shellRef.current));
@@ -607,6 +754,11 @@ export default function ChartCanvas({
             {drawMode === 'ruler' ? (
               <span className="text-[12px] oc-text-accent">{rulerHint || '点击第一点'}</span>
             ) : null}
+            {TWO_POINT_HINTS[drawMode] ? (
+              <span className="text-[12px] oc-text-accent">
+                {rulerCornerRef.current ? rulerHint || '移动鼠标预览，再点确定' : TWO_POINT_HINTS[drawMode]}
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -615,10 +767,10 @@ export default function ChartCanvas({
               title="尺子"
               onClick={() => {
                 if (drawMode === 'ruler') {
-                  clearRuler();
+                  clearLocalAnnotations();
                   setDrawMode('none');
                 } else {
-                  clearRuler();
+                  clearLocalAnnotations();
                   setDrawMode('ruler');
                 }
               }}
@@ -638,9 +790,42 @@ export default function ChartCanvas({
             </button>
             <button
               type="button"
+              className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'trend' ? ' oc-btn--ghost-selected' : ''}`}
+              title="趋势线（持久保存）"
+              onClick={() => {
+                rulerCornerRef.current = null;
+                setDrawMode((mode) => (mode === 'trend' ? 'none' : 'trend'));
+              }}
+            >
+              <TrendingUp className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'region' ? ' oc-btn--ghost-selected' : ''}`}
+              title="区域（持久保存）"
+              onClick={() => {
+                rulerCornerRef.current = null;
+                setDrawMode((mode) => (mode === 'region' ? 'none' : 'region'));
+              }}
+            >
+              <Square className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'fib' ? ' oc-btn--ghost-selected' : ''}`}
+              title="斐波那契回调（持久保存）"
+              onClick={() => {
+                rulerCornerRef.current = null;
+                setDrawMode((mode) => (mode === 'fib' ? 'none' : 'fib'));
+              }}
+            >
+              <Percent className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
               className="oc-icon-btn oc-icon-btn--sm"
-              title="清除手动画线"
-              onClick={clearUserDrawnLines}
+              title="清除手动画线（已保存的画线将从数据中删除）"
+              onClick={handleErase}
             >
               <Eraser className="h-4 w-4" strokeWidth={2} />
             </button>

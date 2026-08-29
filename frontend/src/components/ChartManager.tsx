@@ -1,11 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import ChartCanvas, { type ChartPriceLine } from './chart/ChartCanvas';
 import { useDataset } from '../context/DatasetContext';
-import { fetchKlines, fetchSymbolStats, fetchTradeFills } from '../services/api';
-import type { Kline, Trade, TradeFill, Timeframe } from '../services/api';
+import {
+  createDrawing,
+  deleteDrawing,
+  fetchDrawings,
+  fetchKlines,
+  fetchSymbolStats,
+  fetchTradeFills,
+} from '../services/api';
+import type { ChartDrawing, DrawingKind, DrawingPoint, Kline, Trade, TradeFill, Timeframe } from '../services/api';
 import { fmtPrice, isSyntheticFills } from '../utils/fills';
 import { readChartTheme } from '../utils/chartTheme';
+import { useToast } from './ToastHost';
 
 const TIMEFRAME_MS: Record<Timeframe, number> = {
   '5m': 5 * 60 * 1000,
@@ -155,6 +163,7 @@ function clampRangeToClosed(range: { start: number; end: number } | null, tfMs: 
 
 function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
   const { activeDatasetId } = useDataset();
+  const { toast } = useToast();
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('15m');
   const [tradeFills, setTradeFills] = useState<TradeFill[]>([]);
   const [tradeFillsError, setTradeFillsError] = useState(false);
@@ -166,6 +175,7 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
   const [compareError, setCompareError] = useState<string | null>(null);
   const [compareSymbol, setCompareSymbol] = useState<string | null>(null);
   const [symbolOptions, setSymbolOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
 
   const rangeForTrade = useMemo(() => {
     if (!selectedTrade) return null;
@@ -284,6 +294,48 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
     };
   }, [compareSymbol, activeTimeframe, rangeForTrade]);
 
+  const drawingSymbol = selectedTrade?.symbol || symbol;
+
+  useEffect(() => {
+    setDrawings([]);
+    if (!drawingSymbol) return;
+    let ignore = false;
+    fetchDrawings(drawingSymbol)
+      .then((rows) => {
+        if (!ignore) setDrawings(rows);
+      })
+      .catch(() => {
+        if (!ignore) setDrawings([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [drawingSymbol]);
+
+  const handleUserDrawing = useCallback(
+    (kind: DrawingKind, payload: DrawingPoint[]) => {
+      if (!drawingSymbol) return;
+      createDrawing(drawingSymbol, kind, payload)
+        .then((created) => {
+          setDrawings((prev) => [...prev, created]);
+        })
+        .catch((err: unknown) => {
+          toast(err instanceof Error ? err.message : '画线保存失败', 'error');
+        });
+    },
+    [drawingSymbol, toast],
+  );
+
+  const handleEraseDrawings = useCallback(() => {
+    const ids = drawings.map((d) => d.id);
+    setDrawings([]);
+    Promise.all(ids.map((id) => deleteDrawing(id).catch(() => null)))
+      .then((results) => {
+        if (results.some((r) => r === null)) toast('部分画线删除失败', 'error');
+      })
+      .catch(() => toast('画线删除失败', 'error'));
+  }, [drawings, toast]);
+
   const overlay = useMemo(
     () => (selectedTrade ? buildTradeOverlay(selectedTrade, tradeFills, activeTimeframe) : { markers: [], priceLines: [] }),
     [selectedTrade, tradeFills, activeTimeframe],
@@ -316,6 +368,9 @@ function ChartManager({ symbol, selectedTrade, noFills = false }: Props) {
       markers={overlay.markers}
       priceLines={overlay.priceLines}
       visibleRange={visibleRange}
+      drawings={drawings}
+      onUserDrawing={handleUserDrawing}
+      onEraseDrawings={handleEraseDrawings}
       compare={compareSymbol ? { symbol: compareSymbol, klines: compareKlines, loading: compareLoading, error: compareError } : null}
       compareOptions={symbolOptions}
       onSelectCompare={setCompareSymbol}

@@ -451,3 +451,93 @@ export async function fetchMasterQuotes(): Promise<MasterQuote[]> {
   const res = await apiFetch<{ data: MasterQuote[] }>('/api/masters/quotes', { skipDataset: true });
   return res.data;
 }
+
+/* ---- Annotations & drawings (docs/DESIGN.md §6) ---- */
+
+export type AnnotationSubjectType = 'trade' | 'master_position';
+
+export interface TradeAnnotation {
+  subject_type: AnnotationSubjectType;
+  subject_id: number;
+  note: string | null;
+  setup_tags: string[];
+  error_tags: string[];
+  grade: string | null;
+  emotion: string | null;
+  planned_stop: number | null;
+  planned_target: number | null;
+  updated_at: string | null;
+}
+
+export interface AnnotationPresets {
+  setup_tags: string[];
+  error_tags: string[];
+  emotions: string[];
+  grades: string[];
+}
+
+export async function fetchAnnotationPresets(): Promise<AnnotationPresets> {
+  return apiFetch<AnnotationPresets>('/api/annotations/presets', { skipDataset: true });
+}
+
+export async function fetchAnnotation(
+  subjectType: AnnotationSubjectType,
+  subjectId: number,
+): Promise<TradeAnnotation> {
+  return apiFetch<TradeAnnotation>(`/api/annotations/${subjectType}/${subjectId}`, {
+    skipDataset: true,
+  });
+}
+
+export async function upsertAnnotation(
+  subjectType: AnnotationSubjectType,
+  subjectId: number,
+  body: Omit<TradeAnnotation, 'subject_type' | 'subject_id' | 'updated_at'>,
+): Promise<TradeAnnotation> {
+  return apiFetch<TradeAnnotation>(`/api/annotations/${subjectType}/${subjectId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    skipDataset: true,
+  });
+}
+
+export type DrawingKind = 'hline' | 'trend' | 'region' | 'fib';
+
+export interface DrawingPoint {
+  time_ms: number;
+  price: number;
+}
+
+export interface ChartDrawing {
+  id: number;
+  symbol: string;
+  kind: DrawingKind;
+  payload: DrawingPoint[];
+  created_at: string | null;
+}
+
+export async function fetchDrawings(symbol: string): Promise<ChartDrawing[]> {
+  const res = await apiFetch<{ symbol: string; data: ChartDrawing[] }>('/api/drawings', {
+    params: { symbol },
+    skipDataset: true,
+  });
+  return res.data;
+}
+
+export async function createDrawing(
+  symbol: string,
+  kind: DrawingKind,
+  payload: DrawingPoint[],
+): Promise<ChartDrawing> {
+  return apiFetch<ChartDrawing>('/api/drawings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, kind, payload }),
+    skipDataset: true,
+  });
+}
+
+export async function deleteDrawing(id: number): Promise<void> {
+  await apiFetch<void>(`/api/drawings/${id}`, { method: 'DELETE', skipDataset: true });
+}

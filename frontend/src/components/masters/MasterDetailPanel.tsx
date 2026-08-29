@@ -16,6 +16,7 @@ import {
 } from '../../services/api';
 import { fmtMoney, fmtDateTime, fmtDurationMs } from '../../utils/format';
 import { useToast } from '../ToastHost';
+import AnnotationEditor from '../AnnotationEditor';
 
 interface Props {
   trader: MasterTrader | null;
@@ -24,7 +25,7 @@ interface Props {
   onHide?: () => void;
 }
 
-type TabKey = 'positions' | 'equity' | 'wisdom';
+type TabKey = 'positions' | 'equity' | 'wisdom' | 'notes';
 
 export default function MasterDetailPanel({
   trader,
@@ -294,6 +295,18 @@ export default function MasterDetailPanel({
         >
           实战心法
         </button>
+
+        <button
+          type="button"
+          className={`border-b-2 py-2 px-3 text-[12px] font-medium transition-colors ${
+            activeTab === 'notes'
+              ? 'border-[var(--oc-accent)] text-[var(--oc-accent)] font-semibold'
+              : 'border-transparent text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
+          }`}
+          onClick={() => setActiveTab('notes')}
+        >
+          笔记
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -540,6 +553,13 @@ export default function MasterDetailPanel({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab 4: Notes — annotation bound to the selected delivery slip */}
+        {activeTab === 'notes' && (
+          <div className="p-3">
+            <AnnotationEditor subjectType="master_position" subjectId={selectedPosition?.id ?? null} />
           </div>
         )}
 

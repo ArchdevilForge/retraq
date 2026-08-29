@@ -19,6 +19,14 @@ from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS, 
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 from services.master_service import master_service
+from services.annotation_service import (
+    ERROR_TAG_PRESETS,
+    EMOTION_PRESETS,
+    GRADE_PRESETS,
+    SETUP_TAG_PRESETS,
+    ValidationError,
+    annotation_service,
+)
 
 ensure_database()
 
@@ -35,6 +43,74 @@ app.add_middleware(
 
 class DatasetUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
+
+
+class AnnotationUpdate(BaseModel):
+    note: Optional[str] = None
+    setup_tags: Optional[list[str]] = None
+    error_tags: Optional[list[str]] = None
+    grade: Optional[str] = None
+    emotion: Optional[str] = None
+    planned_stop: Optional[float] = None
+    planned_target: Optional[float] = None
+
+
+class DrawingCreate(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=32)
+    kind: str = Field(..., min_length=1, max_length=8)
+    payload: list[dict]
+
+
+@app.get("/api/annotations/presets")
+def annotation_presets():
+    return {
+        "setup_tags": list(SETUP_TAG_PRESETS),
+        "error_tags": list(ERROR_TAG_PRESETS),
+        "emotions": list(EMOTION_PRESETS),
+        "grades": list(GRADE_PRESETS),
+    }
+
+
+@app.get("/api/annotations/{subject_type}/{subject_id}")
+def get_annotation(subject_type: str, subject_id: int, db: Session = Depends(get_db)):
+    try:
+        return annotation_service.get_annotation(db, subject_type, subject_id)
+    except ValidationError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/annotations/{subject_type}/{subject_id}")
+def upsert_annotation(
+    subject_type: str,
+    subject_id: int,
+    body: AnnotationUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        # PUT semantics: full resource replace so clearing a field (null) sticks.
+        return annotation_service.upsert_annotation(db, subject_type, subject_id, body.model_dump())
+    except ValidationError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/drawings")
+def list_drawings(symbol: str = Query(...), db: Session = Depends(get_db)):
+    return {"symbol": symbol, "data": annotation_service.list_drawings(db, symbol)}
+
+
+@app.post("/api/drawings")
+def create_drawing(body: DrawingCreate, db: Session = Depends(get_db)):
+    try:
+        return annotation_service.create_drawing(db, body.symbol, body.kind, body.payload)
+    except ValidationError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/drawings/{drawing_id}")
+def delete_drawing(drawing_id: int, db: Session = Depends(get_db)):
+    if not annotation_service.delete_drawing(db, drawing_id):
+        raise HTTPException(404, "Drawing not found")
+    return {"ok": True}
 
 
 @app.get("/api/import/templates")

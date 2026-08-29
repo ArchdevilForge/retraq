@@ -2,6 +2,12 @@ from sqlalchemy import Column, Integer, String, Float, BigInteger, Index, Foreig
 from sqlalchemy.sql import func
 from database import Base
 
+# Annotation subjects: a locally imported trade or a synced master delivery slip.
+SUBJECT_TRADE = "trade"
+SUBJECT_MASTER_POSITION = "master_position"
+# Drawing kinds: hline (1 point) | trend (2) | region (2) | fib (2)
+DRAWING_KINDS = ("hline", "trend", "region", "fib")
+
 
 class Dataset(Base):
     __tablename__ = "datasets"
@@ -68,6 +74,41 @@ class TradeFill(Base):
     time_ms = Column(BigInteger, nullable=False)
     realized_pnl = Column(Float, nullable=True)
     order_id = Column(String(64), nullable=True)
+
+
+class TradeAnnotation(Base):
+    """Per-position replay annotation bound to the position itself (docs/DESIGN.md §6)."""
+
+    __tablename__ = "trade_annotations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subject_type = Column(String(16), nullable=False, default=SUBJECT_TRADE)  # trade | master_position
+    subject_id = Column(Integer, nullable=False)
+    note = Column(Text, nullable=True)
+    setup_tags = Column(Text, nullable=True)  # JSON array
+    error_tags = Column(Text, nullable=True)  # JSON array
+    grade = Column(String(4), nullable=True)  # A+ | A | B | C
+    emotion = Column(String(16), nullable=True)
+    planned_stop = Column(Float, nullable=True)
+    planned_target = Column(Float, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_annotation_subject", "subject_type", "subject_id", unique=True),
+    )
+
+
+class ChartDrawing(Base):
+    """Chart drawing bound to symbol + time region, independent of any position (docs/DESIGN.md §6)."""
+
+    __tablename__ = "chart_drawings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(32), nullable=False, index=True)
+    kind = Column(String(8), nullable=False)  # hline | trend | region | fib
+    payload = Column(Text, nullable=False)  # JSON: [{time_ms, price}, ...]
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class MasterTrader(Base):
