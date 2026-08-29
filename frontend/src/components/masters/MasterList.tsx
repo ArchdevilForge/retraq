@@ -19,7 +19,6 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'win_rate', label: '胜率' },
   { key: 'position_count', label: '交割单笔数' },
   { key: 'mdd', label: '最大回撤' },
-  { key: 'sharp_ratio', label: '夏普比率' },
 ];
 
 function Sparkline({ points }: { points: Array<{ time: number; value: number }> }) {
