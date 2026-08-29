@@ -103,6 +103,13 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         toolbar_symbol = page.locator(".oc-chart-toolbar .font-mono").first
         expect(toolbar_symbol).to_have_text(re.compile("ETH-USDT"), timeout=10000)
 
+        # P§五.2 — 同期「他 vs 我」：chip 显示同期自有持仓数与盈亏，可切换叠加
+        chip = page.locator("[data-testid='self-compare-chip']")
+        expect(chip).to_be_visible(timeout=10000)
+        expect(chip).to_contain_text(re.compile(r"\d+ 笔"))
+        chip.get_by_role("button", name="隐藏对照").click()
+        expect(chip.get_by_role("button", name="显示对照")).to_be_visible()
+
         # 战绩画像 tabs: 净值走势 / 实战心法（§五 画像复用同一详情面板）
         page.get_by_role("button", name="净值走势").click()
         expect(page.get_by_text("7日收益曲线走势")).to_be_visible(timeout=10000)

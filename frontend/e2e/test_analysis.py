@@ -86,8 +86,8 @@ def test_review_conclusion_on_global_timeline(browser, seed, api):
         ctx.close()
 
 
-def test_tag_analysis_sim_compare_toggle(browser, seed):
-    """§六/§七 — 「模拟 vs 实盘」对比开关存在，默认关闭，开启后带 include_sim 请求。"""
+def test_tag_analysis_sim_and_master_views(browser, seed):
+    """§六/§七 — sim 对比开关与 master 视角切换：默认 self，开关带入请求参数。"""
     ctx = new_context(browser, seed)
     page = ctx.new_page()
     try:
@@ -96,15 +96,26 @@ def test_tag_analysis_sim_compare_toggle(browser, seed):
         page.on("request", lambda r: reqs.append(r.url) if "/api/analysis/by-setup" in r.url else None)
         goto(page, "/analysis?tab=tags")
 
-        toggle = page.get_by_role("checkbox", name=re.compile("对比训练"))
-        expect(toggle).to_be_visible(timeout=10000)
-        assert not toggle.is_checked(), "sim compare must default to off (分析默认只统计 self)"
-        assert "include_sim=False" in reqs[0] or "include_sim=false" in reqs[0] or "include_sim" not in reqs[0], reqs
+        sim_toggle = page.get_by_role("checkbox", name=re.compile("对比训练"))
+        master_toggle = page.get_by_role("checkbox", name=re.compile("对比高手"))
+        expect(sim_toggle).to_be_visible(timeout=10000)
+        expect(master_toggle).to_be_visible()
+        assert not sim_toggle.is_checked() and not master_toggle.is_checked(), \
+            "对比开关必须默认关闭（分析默认只统计 self）"
+        assert "include_master=True" not in reqs[0], reqs
 
-        toggle.check()
+        sim_toggle.check()
         page.wait_for_timeout(800)
         assert any("include_sim=True" in u or "include_sim=true" in u for u in reqs), \
             f"toggling sim compare did not refetch with include_sim: {reqs}"
+
+        # master 视角：切主视图 → 自动并入 master 组并 refetch
+        page.get_by_role("tab", name="高手").click()
+        page.wait_for_timeout(800)
+        assert any("include_master=True" in u or "include_master=true" in u for u in reqs), \
+            f"master view did not refetch with include_master: {reqs}"
+        # master 数据集当前无 trades（position 级数据）→ 诚实空态
+        expect(page.get_by_text("还没有带 setup 标签的交易")).to_be_visible(timeout=10000)
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()

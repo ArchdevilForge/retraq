@@ -250,3 +250,23 @@ def step_until(page: Page, predicate, max_steps: int = 20, timeout_ms: int = 300
         btn.click()
         page.wait_for_timeout(120)
     return predicate(page)
+
+
+def cursor_x(page: Page, surface: str) -> float | None:
+    """Horizontal scan at 40% height for the time-cursor hover band (ew-resize).
+
+    D§2.3: the replay cursor line must have persistent visual presence and be
+    horizontally draggable; the hover affordance proves it is rendered.
+    """
+    box = page.locator(surface).first.bounding_box()
+    y = box["y"] + box["height"] * 0.4
+    hit = None
+    x = box["width"] * 0.15
+    while x < box["width"] * 0.92:
+        page.mouse.move(box["x"] + x, y, steps=1)
+        page.wait_for_timeout(8)
+        cur = page.eval_on_selector(surface, "el => el.style.cursor")
+        if cur == "ew-resize":
+            return x
+        x += 6
+    return hit

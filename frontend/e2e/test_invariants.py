@@ -72,12 +72,6 @@ def test_layout_invariants(browser, seed, path, theme, w, h):
         ctx.close()
 
 
-@pytest.mark.xfail(
-    reason="DESIGN §3 dark tokens diverge from implementation: spec #141212/#201d1d, "
-    "impl #201d1d/#302c2c. Anchor kept so the gap stays visible; flip to pass "
-    "when the palette is aligned.",
-    strict=True,
-)
 def test_dark_theme_spec_token_values(browser, seed):
     """DESIGN §3 — exact dark-mode token values from the spec table."""
     ctx = new_context(browser, seed, theme="dark")
@@ -87,6 +81,7 @@ def test_dark_theme_spec_token_values(browser, seed):
         goto(page, "/replay")
         assert_theme_token(page, "--background-base", "#141212")
         assert_theme_token(page, "--background-weak", "#201d1d")
+        assert_theme_token(page, "--surface-raised-base-hover", "rgba(255, 255, 255, 0.05)")
     finally:
         ctx.close()
 

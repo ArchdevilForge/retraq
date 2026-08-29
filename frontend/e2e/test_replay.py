@@ -5,17 +5,14 @@ Each test anchors to spec clauses; see CONSTRAINT-MATRIX.md.
 
 import re
 import time
+from datetime import datetime
 
 from playwright.sync_api import expect
 
 from conftest import new_context
-from helpers import (
-    assert_console_clean,
-    assert_zero_page_scroll,
-    goto,
-    API_URL,
-    BASE_URL,
-)
+from helpers import assert_console_clean, assert_zero_page_scroll, cursor_x, goto
+
+DRAG_SURFACE = "div.relative.min-h-0.flex-1 > div.absolute.inset-0"
 
 # Unique marker so assertions survive concurrent user data in the same tables.
 MARK = "e2e-标注-9f3a"
@@ -203,6 +200,10 @@ def test_trade_selection_anchors_chart(browser, seed):
         assert_zero_page_scroll(page)
         _open_first_trade(page)
 
+        # §9 — 日期时间统一 2026-08-27 20:30（Asia/Shanghai）
+        first_row = page.locator("aside.oc-float-panel--left button.oc-list-item").first.inner_text()
+        assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", first_row), f"date format off-spec: {first_row!r}"
+
         # Unified engine toolbar shows the anchored symbol (single engine, §三).
         toolbar_symbol = page.locator(".oc-chart-toolbar .font-mono").first
         expect(toolbar_symbol).to_have_text(re.compile("ETH-USDT"), timeout=10000)
@@ -234,13 +235,99 @@ def test_panel_rail_collapse_expand(browser, seed):
             rail.click()
             expect(page.locator("aside.oc-float-panel--left")).to_be_visible()
 
-        collapse_detail = page.locator("button[aria-label='收起详情']")
+        collapse_detail = page.locator(
+            "button[aria-label='隐藏仓位详情'], button[aria-label='收起详情']"
+        ).first
         if collapse_detail.is_visible():
             collapse_detail.click()
             rail_r = page.locator("button.oc-panel-rail--right")
             expect(rail_r).to_be_visible()
+            expect(page.locator("aside.oc-float-panel--right")).to_be_hidden()
             rail_r.click()
             expect(page.locator("aside.oc-float-panel--right")).to_be_visible()
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()
+
+
+def test_daily_review_entry_on_replay(browser, seed, api):
+    """§6/§三 — 复盘页常驻「今日复盘」入口：一句话结论写全局时间线。"""
+    from conftest import hook_page
+
+    today_key = datetime.now().strftime("%Y-%m-%d")
+    backup = None
+    for r in api.get("/api/reviews", params={"cadence": "daily"}).json()["data"]:
+        if r["period_key"] == today_key:
+            backup = r["content"]
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        entry = page.get_by_role("button", name="打开今日复盘")
+        expect(entry).to_be_visible()  # 常驻：无需选中任何持仓
+        entry.click()
+        ta = page.locator("textarea[placeholder*='一句话结论']")
+        expect(ta).to_be_visible()
+        ta.fill("e2e-今日-5c1b 守住计划")
+        page.locator("button:has-text('保存今日结论')").click()
+        expect(page.locator(".oc-toast", has_text="已保存今日结论")).to_be_visible(timeout=10000)
+
+        rows = api.get("/api/reviews", params={"cadence": "daily"}).json()["data"]
+        assert any(r["period_key"] == today_key and "e2e-今日-5c1b" in r["content"] for r in rows), \
+            "daily conclusion not on global timeline"
+
+        # 与分析页复盘 tab 同一份数据
+        page.goto("http://localhost:5173/analysis?tab=review")
+        expect(page.locator("textarea[placeholder*='一句话结论']").first).to_have_value(
+            re.compile("e2e-今日-5c1b"), timeout=10000
+        )
+    finally:
+        if backup is not None:
+            api.put("/api/reviews", data={"cadence": "daily", "period_key": today_key, "content": backup})
+        else:
+            import sqlite3
+
+            from conftest import DB_PATH
+
+            con = sqlite3.connect(DB_PATH, timeout=15)
+            con.execute("PRAGMA busy_timeout=15000")
+            con.execute("DELETE FROM review_notes WHERE cadence='daily' AND period_key=?", (today_key,))
+            con.commit()
+            con.close()
+        ctx.close()
+
+
+def test_replay_free_time_cursor(browser, seed):
+    """§2.3 — 复盘模式 bar 级自由游标：常驻可见（hover 手型）且可横向拖动。"""
+    from conftest import hook_page
+
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        _open_first_trade(page)
+        expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=10000)
+        page.wait_for_timeout(600)
+        # 游标默认停在可见区最后一根 bar；详情面板浮层盖住右缘，先收起再拖
+        collapse = page.locator("button[aria-label='隐藏仓位详情']")
+        if collapse.is_visible():
+            collapse.click()
+            page.wait_for_timeout(400)
+
+        x0 = cursor_x(page, DRAG_SURFACE)
+        assert x0 is not None, "time cursor not rendered (no ew-resize hover band)"
+        box = page.locator(DRAG_SURFACE).first.bounding_box()
+        y = box["y"] + box["height"] * 0.4
+        page.mouse.move(box["x"] + x0, y, steps=2)
+        page.mouse.down()
+        page.mouse.move(box["x"] + x0 - 60, y, steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(400)
+
+        x1 = cursor_x(page, DRAG_SURFACE)
+        assert x1 is not None and x1 < x0 - 40, f"cursor did not move left after drag: {x0} -> {x1}"
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()

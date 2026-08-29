@@ -361,7 +361,7 @@ def test_pending_limit_cancel(browser, seed, api):
 
 
 def test_transport_controls(browser, seed, api):
-    """§2.3 — 回放控制条：单步前进、自动播放、倍速（快捷键未实现，见 MATRIX 缺口）。"""
+    """§2.3 — 回放控制条：单步前进、自动播放、倍速、快捷键 Shift+↓/Shift+→。"""
     ctx = new_context(browser, seed)
     page = ctx.new_page()
     try:
@@ -377,10 +377,23 @@ def test_transport_controls(browser, seed, api):
         page.wait_for_timeout(200)
         assert n() == n0 + 1, "step did not advance cursor"
 
+        # 快捷键：Shift+→ 单步
+        page.keyboard.press("Shift+ArrowRight")
+        page.wait_for_timeout(200)
+        assert n() == n0 + 2, "Shift+ArrowRight did not step"
+
+        # 快捷键：Shift+↓ 播放/暂停
+        page.keyboard.press("Shift+ArrowDown")
+        expect(page.locator("button:has-text('暂停')")).to_be_visible(timeout=5000)
+        page.wait_for_timeout(1200)
+        assert n() > n0 + 2, "Shift+ArrowDown did not start playback"
+        page.keyboard.press("Shift+ArrowDown")
+        expect(page.locator("button:has-text('自动播放')")).to_be_visible(timeout=5000)
+
         page.locator("header select[aria-label='播放速度']").select_option("4")
         page.locator("button:has-text('自动播放')").click()
         page.wait_for_timeout(1500)
-        assert n() > n0 + 1, "playback did not advance cursor"
+        assert n() > n0 + 2, "playback did not advance cursor"
         page.locator("button:has-text('暂停')").click()
     finally:
         ctx.close()

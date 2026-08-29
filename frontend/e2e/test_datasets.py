@@ -93,6 +93,36 @@ def test_binance_sync_button_mocked(browser, seed, page):
     )
 
 
+def test_delete_dataset_via_ui_two_step_confirm(browser, seed, api, page):
+    """§四/§10 — 列表行内删除：两步确认（禁 confirm()）+ 成功 Toast + 列表消失。"""
+    created = None
+    try:
+        resp = api.post(
+            "/api/trades/import",
+            params={"template": "langge", "label": "[E2E]UI删除"},
+            multipart={"file": {"name": "del.csv", "mimeType": "text/csv", "buffer": IMPORT_CSV.encode()}},
+        )
+        assert resp.ok
+        created = resp.json()["dataset_id"]
+
+        goto(page, "/replay")
+        _open_picker(page)
+        row_btn = page.get_by_role("button", name=f"删除数据集 [E2E]UI删除")
+        expect(row_btn).to_be_visible(timeout=10000)
+        row_btn.click()  # 第一步：进入待确认
+        confirm_btn = page.get_by_role("button", name=f"确认删除 [E2E]UI删除")
+        expect(confirm_btn).to_be_visible()
+        confirm_btn.click()  # 第二步：真删
+        expect(page.locator(".oc-toast", has_text="数据集已删除")).to_be_visible(timeout=10000)
+        expect(page.get_by_role("button", name=f"删除数据集 [E2E]UI删除")).not_to_be_visible(timeout=10000)
+
+        ids = [d["id"] for d in api.get("/api/datasets").json()["data"]]
+        assert created not in ids, "dataset still listed after UI delete"
+    finally:
+        if created:
+            api.delete(f"/api/datasets/{created}")
+
+
 def test_delete_dataset_via_api(browser, seed, api):
     """§四 — 删除数据集（级联成交/持仓）。UI 删除入口缺失，走 API 锚定行为。"""
     created = None
