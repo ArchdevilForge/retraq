@@ -1079,6 +1079,15 @@
   }
 }
 
+/* Contextual hint card (docs/DESIGN.md §7) */
+.oc-hint-card {
+  padding: 10px 12px;
+  border: 2px solid var(--border-strong-base);
+  border-left: 4px solid var(--oc-profit, #30d158);
+  background: var(--background-weak);
+  color: var(--text-base);
+}
+
 /* ---- Full-screen chart canvas + floating panels (v2, docs/DESIGN.md §2) ---- */
 .oc-canvas {
   position: relative;

@@ -9,6 +9,8 @@ import {
   type TradeAnnotation,
 } from '../services/api';
 import { useToast } from './ToastHost';
+import HintCard from './HintCard';
+import { ERROR_TAG_HINTS, type Hint } from '../utils/hints';
 
 const SAVE_DEBOUNCE_MS = 800;
 
@@ -39,6 +41,7 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
   const [customError, setCustomError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [activeHints, setActiveHints] = useState<Hint[]>([]);
   const saveTimerRef = useRef<number | null>(null);
   const latestRef = useRef(value);
   useEffect(() => {
@@ -115,10 +118,25 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
         const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
         return { ...prev, [key]: next };
       });
+      // 标记错误标签时按需弹一次对应心法（docs/DESIGN.md §7）
+      if (key === 'error_tags' && !latestRef.current.error_tags.includes(tag)) {
+        const hint = ERROR_TAG_HINTS[tag];
+        if (hint && subjectId != null) {
+          const seenKey = `retraq.hint.${subjectType}.${subjectId}.${tag}`;
+          if (!sessionStorage.getItem(seenKey)) {
+            sessionStorage.setItem(seenKey, '1');
+            setActiveHints((prev) => (prev.some((h) => h.title === hint.title) ? prev : [...prev, hint]));
+          }
+        }
+      }
       scheduleSave();
     },
-    [scheduleSave],
+    [scheduleSave, subjectType, subjectId],
   );
+
+  const dismissHint = useCallback((title: string) => {
+    setActiveHints((prev) => prev.filter((h) => h.title !== title));
+  }, []);
 
   const addCustomTag = useCallback(
     (key: 'setup_tags' | 'error_tags', raw: string, reset: () => void) => {
@@ -131,6 +149,9 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
   );
 
   if (subjectId == null) return null;
+
+  const subjectKey = `${subjectType}.${subjectId}`;
+  const hints = activeHints;
 
   const tagChips = (key: 'setup_tags' | 'error_tags', presetList: string[] | undefined, custom: string, setCustom: (v: string) => void) => (
     <div className="flex flex-wrap gap-1.5">
@@ -160,7 +181,10 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
   );
 
   return (
-    <div className="panel-card space-y-3" data-loaded={loaded}>
+    <div className="panel-card space-y-3" data-loaded={loaded} key={subjectKey}>
+      {hints.map((h) => (
+        <HintCard key={h.title} hint={h} onDismiss={() => dismissHint(h.title)} />
+      ))}
       <div className="panel-card-title flex items-center justify-between">
         <span>复盘标注</span>
         {saving ? (
