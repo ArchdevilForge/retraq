@@ -22,9 +22,9 @@ SETTLE_MS = DEBOUNCE_MS + 700
 
 
 def _open_first_trade(page):
-    # §2.4 弹层范式：持仓按钮唤起列表浮层，点行后浮层收起、详情浮卡弹出
+    # §2.4 弹层范式：持仓按钮唤起居中列表弹窗，点行后弹窗收起、详情浮卡弹出
     page.get_by_role("button", name="打开持仓列表").click()
-    page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+    page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
     expect(page.locator("textarea[placeholder*='这笔交易']")).to_be_visible(timeout=10000)
     # The editor loads the stored annotation asynchronously; typing before the
     # load resolves lets the fetch response overwrite the input (autosave then
@@ -203,7 +203,10 @@ def test_trade_selection_anchors_chart(browser, seed):
         _open_first_trade(page)
 
         # §9 — 日期时间统一 2026-08-27 20:30（Asia/Shanghai）
-        first_row = page.locator(".oc-float-panel--left button.oc-list-item").first.inner_text()
+        # §9 日期断言在列表弹窗里取行（先开弹窗再读，读完关闭）
+        page.get_by_role("button", name="打开持仓列表").click()
+        first_row = page.locator("[aria-label='持仓列表'] button.oc-list-item").first.inner_text()
+        page.keyboard.press("Escape")
         assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", first_row), f"date format off-spec: {first_row!r}"
 
         # Unified engine toolbar shows the anchored symbol (single engine, §三).
@@ -227,25 +230,27 @@ def test_popover_open_close_and_detail_card(browser, seed):
         hook_page(page)
         goto(page, "/replay")
 
-        # 默认全关，图占满视口
-        expect(page.locator(".oc-float-panel--left")).to_be_hidden()
+        # 默认全关，图占满视口（背板常驻 DOM，hidden 类切换）
+        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
 
+        # 打开 → 居中弹窗（TV symbol search 式，宽 760px；背板常驻、hidden 类切换）
         page.get_by_role("button", name="打开持仓列表").click()
-        expect(page.locator(".oc-float-panel--left")).to_be_visible()
-        row = page.locator(".oc-float-panel--left button.oc-list-item").first
+        modal = page.locator("[aria-label='持仓列表']")
+        expect(modal).to_be_visible()
+        row = modal.locator("button.oc-list-item").first
         expect(row).to_be_visible()
         # §4.2 数字排版：列表行内金额使用 tabular-nums
         assert "tabular-nums" in (row.get_attribute("class") or "") or \
             row.locator(".tabular-nums").count() > 0, "trade row amount lacks tabular-nums"
 
-        # 点击浮层外部（图表区中部）→ 关闭
-        page.locator(".oc-canvas__chart").click(position={"x": 700, "y": 300})
-        expect(page.locator(".oc-float-panel--left")).to_be_hidden()
+        # 点击遮罩（弹窗外部）→ 关闭（hidden 类切换，元素常驻 DOM）
+        page.mouse.click(200, 850)
+        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
 
-        # 选中行 → 列表收起、右侧详情浮卡弹出
+        # 选中行 → 弹窗关闭、右侧详情浮卡弹出
         page.get_by_role("button", name="打开持仓列表").click()
-        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
-        expect(page.locator(".oc-float-panel--left")).to_be_hidden()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
+        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
         card = page.locator(".oc-float-panel--right")
         expect(card).to_be_visible()
         expect(card.get_by_text("仓位详情")).to_be_visible()
@@ -256,7 +261,7 @@ def test_popover_open_close_and_detail_card(browser, seed):
 
         # Esc 关闭浮卡（重新选中后按 Esc）
         page.get_by_role("button", name="打开持仓列表").click()
-        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
         expect(page.locator(".oc-float-panel--right")).to_be_visible()
         page.keyboard.press("Escape")
         expect(page.locator(".oc-float-panel--right")).to_have_count(0)

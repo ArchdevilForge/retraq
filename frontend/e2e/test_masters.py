@@ -12,13 +12,15 @@ from playwright.sync_api import expect
 from conftest import hook_page, mock_binance_sync, new_context
 from helpers import assert_console_clean, assert_zero_page_scroll, goto
 
-PANEL = ".oc-float-panel--left"
+PANEL = "[aria-label='高手列表']"
 
 
 def _open_masters(page):
     page.get_by_role("button", name="打开高手列表").click()
-    expect(page.locator(f"{PANEL}").get_by_text("合约高手榜")).to_be_visible(timeout=10000)
-    expect(page.locator(f"{PANEL} button.oc-list-item").first).to_be_visible(timeout=10000)
+    modal = page.locator(PANEL)
+    expect(modal).to_be_visible(timeout=10000)
+    expect(modal.get_by_text("合约高手榜")).to_be_visible(timeout=10000)
+    expect(modal.locator("button.oc-list-item").first).to_be_visible(timeout=10000)
 
 
 def _filter_seeded(page):

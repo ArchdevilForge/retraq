@@ -88,6 +88,9 @@ type Props = {
   /** 复盘模式自由时间游标：有回调即可拖动，游标线常驻（docs/DESIGN.md §2.3）。 */
   cursorTime?: number | null;
   onCursorDrag?: (timeSec: number) => void;
+  /** 工具栏最右预留槽宽度（px）。宿主页面用自己的稳定按钮层覆盖它，
+      避免把动态 ReactNode 塞进图表子树导致重挂载。 */
+  toolbarSlotWidth?: number;
 };
 
 type ChartBundle = {
@@ -179,6 +182,7 @@ export default function ChartCanvas({
   onDragPriceLine,
   cursorTime,
   onCursorDrag,
+  toolbarSlotWidth,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -1037,6 +1041,7 @@ export default function ChartCanvas({
             >
               {compareEnabled ? '隐藏对比' : '多交易对对比'}
             </button>
+            {toolbarSlotWidth ? <div className="shrink-0" style={{ width: toolbarSlotWidth }} aria-hidden /> : null}
           </div>
         </div>
         <div className="relative min-h-0 flex-1">

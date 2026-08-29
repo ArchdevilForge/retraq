@@ -183,6 +183,8 @@ interface Props {
   noFills?: boolean;
   /** 同段行情「他 vs 我」：叠加到同一张图上的我的同期持仓（P§五.2）。 */
   selfCompareTrades?: Trade[] | null;
+  /** 工具栏最右预留槽宽度（透传 ChartCanvas）。 */
+  toolbarSlotWidth?: number;
 }
 
 /** 不请求尚未收盘的 K 线，否则缓存永远算不上覆盖，每次都回源交易所。仅可在 effect 内调用。 */
@@ -192,7 +194,7 @@ function clampRangeToClosed(range: { start: number; end: number } | null, tfMs: 
   return { start: range.start, end: Math.max(range.start, Math.min(range.end, lastClosedEnd)) };
 }
 
-function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrades }: Props) {
+function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrades, toolbarSlotWidth }: Props) {
   const { activeDatasetId } = useDataset();
   const { toast } = useToast();
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('15m');
@@ -437,6 +439,7 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
       onTimeframeChange={setActiveTimeframe}
       cursorTime={cursorSec}
       onCursorDrag={setCursorSec}
+      toolbarSlotWidth={toolbarSlotWidth}
     />
   );
 }

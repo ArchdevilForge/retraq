@@ -175,7 +175,7 @@ def test_async_shows_spinner(browser, seed):
         page.route("**/api/klines/**", lambda route: (time.sleep(1.5), route.continue_()))
         goto(page, "/replay")
         page.get_by_role("button", name="打开持仓列表").click()
-        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
         expect(page.locator(".oc-spinner").first).to_be_visible(timeout=5000)
         expect(page.locator(".oc-spinner").first).to_have_count(0, timeout=10000)
     finally:
@@ -193,7 +193,7 @@ def test_error_is_chinese_with_retry(browser, seed):
         blocking = page.route("**/api/masters**", lambda route: route.fulfill(status=500, body='{"detail":"高手列表加载失败"}'))
         goto(page, "/replay")
         page.get_by_role("button", name="打开高手列表").click()
-        err_zone = page.locator(".oc-float-panel--left")
+        err_zone = page.locator("[aria-label='高手列表']")
         expect(err_zone.get_by_text(re.compile("高手列表加载失败"))).to_be_visible()
         retry = err_zone.get_by_role("button", name=re.compile("重试"))
         expect(retry).to_be_visible()

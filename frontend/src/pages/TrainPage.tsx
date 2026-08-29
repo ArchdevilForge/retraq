@@ -449,7 +449,7 @@ export default function TrainPage() {
       <div className="oc-canvas min-h-0 flex-1 overflow-hidden">
         <dialog
           ref={setupModalRef}
-          className="oc-modal w-[min(24rem,92vw)]"
+          className="oc-modal w-[min(560px,94vw)]"
           aria-label="训练场景配置"
           onCancel={(e) => {
             e.preventDefault();
@@ -517,24 +517,26 @@ export default function TrainPage() {
                   ))}
                 </div>
               </div>
-              <label className="flex flex-col gap-1 text-[13px]">
-                开始
-                <input
-                  type="datetime-local"
-                  className="oc-input-wrap"
-                  value={startLocal}
-                  onChange={(e) => setStartLocal(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[13px]">
-                结束
-                <input
-                  type="datetime-local"
-                  className="oc-input-wrap"
-                  value={endLocal}
-                  onChange={(e) => setEndLocal(e.target.value)}
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-[13px]">
+                  开始
+                  <input
+                    type="datetime-local"
+                    className="oc-input-wrap"
+                    value={startLocal}
+                    onChange={(e) => setStartLocal(e.target.value)}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[13px]">
+                  结束
+                  <input
+                    type="datetime-local"
+                    className="oc-input-wrap"
+                    value={endLocal}
+                    onChange={(e) => setEndLocal(e.target.value)}
+                  />
+                </label>
+              </div>
             </>
           ) : (
             <div className="flex flex-col gap-2">
@@ -592,52 +594,55 @@ export default function TrainPage() {
             </div>
           )}
 
-          <label className="flex flex-col gap-1 text-[13px]">
-            周期
-            <select
-              className="oc-input-wrap"
-              value={timeframe}
-              onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-            >
-              {TIMEFRAMES.map((tf) => (
-                <option key={tf} value={tf}>
-                  {tf}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-[13px]">
+              周期
+              <select
+                className="oc-input-wrap"
+                value={timeframe}
+                onChange={(e) => setTimeframe(e.target.value as Timeframe)}
+              >
+                {TIMEFRAMES.map((tf) => (
+                  <option key={tf} value={tf}>
+                    {tf}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[13px]">
+              上下文根数
+              <input
+                type="number"
+                className="oc-input-wrap"
+                min={5}
+                max={200}
+                value={contextBars}
+                onChange={(e) => setContextBars(Number(e.target.value) || DEFAULT_CONTEXT_BARS)}
+              />
+            </label>
+          </div>
 
-          <label className="flex flex-col gap-1 text-[13px]">
-            上下文根数
-            <input
-              type="number"
-              className="oc-input-wrap"
-              min={5}
-              max={200}
-              value={contextBars}
-              onChange={(e) => setContextBars(Number(e.target.value) || DEFAULT_CONTEXT_BARS)}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-[13px]">
-            虚拟本金 (USDT)
-            <input
-              type="number"
-              className="oc-input-wrap"
-              value={startEquity}
-              onChange={(e) => setStartEquity(Number(e.target.value) || DEFAULT_START_EQUITY)}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-[13px]">
-            手续费 % / 边
-            <input
-              type="number"
-              step="0.01"
-              className="oc-input-wrap"
-              value={feeRatePct}
-              onChange={(e) => setFeeRatePct(Number(e.target.value))}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-[13px]">
+              虚拟本金 (USDT)
+              <input
+                type="number"
+                className="oc-input-wrap"
+                value={startEquity}
+                onChange={(e) => setStartEquity(Number(e.target.value) || DEFAULT_START_EQUITY)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[13px]">
+              手续费 % / 边
+              <input
+                type="number"
+                step="0.01"
+                className="oc-input-wrap"
+                value={feeRatePct}
+                onChange={(e) => setFeeRatePct(Number(e.target.value))}
+              />
+            </label>
+          </div>
 
           <button type="button" className="oc-btn oc-btn--primary" disabled={loading} onClick={() => void onStart()}>
             {loading ? '加载中…' : run ? '开新局' : '开始训练'}

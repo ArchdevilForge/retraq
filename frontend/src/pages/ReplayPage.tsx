@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ListFilter, Trophy } from 'lucide-react';
 import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
@@ -136,6 +137,7 @@ export default function ReplayPage() {
     };
   }, [listOpen, detailOpen]);
 
+
   const handleSymbolChange = useCallback((nextSymbol: string) => {
     setSymbol(nextSymbol);
     if (!nextSymbol) setSelectedTrade(null);
@@ -181,6 +183,37 @@ export default function ReplayPage() {
     [listOpen, source, clearSelections],
   );
 
+  // TV 顶栏式入口按钮：ReplayPage 自有层覆盖在工具栏预留槽上（不进图表子树，零重挂载）
+  const toolbarButtons = useMemo(
+    () => (
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          title="我的持仓列表"
+          aria-label="打开持仓列表"
+          aria-expanded={listOpen && source === 'mine'}
+          className={`oc-btn oc-btn--sm h-7 gap-1.5 px-2.5 text-[12px] ${listOpen && source === 'mine' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
+          onClick={() => openList('mine')}
+        >
+          <ListFilter className="h-3.5 w-3.5" aria-hidden />
+          持仓
+        </button>
+        <button
+          type="button"
+          title="合约高手榜"
+          aria-label="打开高手列表"
+          aria-expanded={listOpen && source === 'masters'}
+          className={`oc-btn oc-btn--sm h-7 gap-1.5 px-2.5 text-[12px] ${listOpen && source === 'masters' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
+          onClick={() => openList('masters')}
+        >
+          <Trophy className="h-3.5 w-3.5" aria-hidden />
+          高手
+        </button>
+        <DailyReview />
+      </div>
+    ),
+    [listOpen, source, openList],
+  );
   if (datasetsLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -200,30 +233,6 @@ export default function ReplayPage() {
 
   const noDataset = source === 'mine' && activeDatasetId == null;
 
-  // 左侧竖条按钮栏（TV 左侧工具栏概念）：稳定挂载在 ReplayPage，不随图表重渲染重建
-  const rail = (
-    <div ref={toolbarRef} className="absolute left-2 top-[62px] z-30 flex flex-col gap-1.5">
-      <button
-        type="button"
-        aria-label="打开持仓列表"
-        aria-expanded={listOpen && source === 'mine'}
-        className={`oc-btn oc-btn--sm oc-btn--secondary w-[64px]${listOpen && source === 'mine' ? ' oc-btn--primary' : ''}`}
-        onClick={() => openList('mine')}
-      >
-        持仓
-      </button>
-      <button
-        type="button"
-        aria-label="打开高手列表"
-        aria-expanded={listOpen && source === 'masters'}
-        className={`oc-btn oc-btn--sm oc-btn--secondary w-[64px]${listOpen && source === 'masters' ? ' oc-btn--primary' : ''}`}
-        onClick={() => openList('masters')}
-      >
-        高手
-      </button>
-      <DailyReview />
-    </div>
-  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
@@ -236,6 +245,7 @@ export default function ReplayPage() {
               selectedTrade={activeTrade}
               noFills={source === 'masters'}
               selfCompareTrades={source === 'masters' && compareOpen ? selfCompareTrades : null}
+              toolbarSlotWidth={248}
             />
           ) : noDataset ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
@@ -248,44 +258,65 @@ export default function ReplayPage() {
           )}
         </div>
 
-        {/* 左侧竖条按钮栏（§2.4 工具条按钮唤起弹层） */}
-        <div key="rail">{rail}</div>
+        {/* 工具栏右侧按钮层：覆盖在预留槽上（§2.4 TV 顶栏式入口） */}
+        <div ref={toolbarRef} className="absolute right-[10px] top-[13px] z-30">
+          {toolbarButtons}
+        </div>
 
-        {/* 左侧列表浮层：我的 / 高手（§2.4） */}
+        {/* 居中列表弹窗：我的 / 高手（§2.4，TV symbol search 式） */}
         <div
-          key="list-popover"
+          key="list-modal-backdrop"
           ref={listRef}
-          className={`oc-float-panel oc-float-panel--left${listOpen ? '' : ' oc-float-panel--hidden'}`}
-          style={{ left: 78 }}
+          className={`fixed inset-0 z-[70] flex items-start justify-center bg-black/60 pt-[7vh]${listOpen ? '' : ' hidden'}`}
           aria-hidden={!listOpen}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setListOpen(false);
+          }}
         >
-          <div className="oc-tabs oc-tabs--fill shrink-0 border-b-2 border-[var(--border-strong-base)]">
-            <button
-              type="button"
-              className={`oc-tab${source === 'mine' ? ' oc-tab--active' : ''}`}
-              onClick={() => {
-                setSource('mine');
-                clearSelections();
-              }}
-            >
-              我的
-            </button>
-            <button
-              type="button"
-              className={`oc-tab${source === 'masters' ? ' oc-tab--active' : ''}`}
-              onClick={() => {
-                setSource('masters');
-                clearSelections();
-              }}
-            >
-              高手
-            </button>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={source === 'mine' ? '持仓列表' : '高手列表'}
+            className={`oc-modal flex min-h-0 w-[min(760px,94vw)] flex-col ${source === 'masters' ? 'h-[min(78vh,720px)]' : 'max-h-[min(70vh,640px)]'}`}
+          >
+            <div className="oc-tabs oc-tabs--fill shrink-0 border-b-2 border-[var(--border-strong-base)]">
+              <button
+                type="button"
+                className={`oc-tab${source === 'mine' ? ' oc-tab--active' : ''}`}
+                onClick={() => {
+                  setSource('mine');
+                  clearSelections();
+                }}
+              >
+                我的
+              </button>
+              <button
+                type="button"
+                className={`oc-tab${source === 'masters' ? ' oc-tab--active' : ''}`}
+                onClick={() => {
+                  setSource('masters');
+                  clearSelections();
+                }}
+              >
+                高手
+              </button>
+              <button
+                type="button"
+                className="oc-btn oc-btn--sm oc-btn--ghost mr-1 ml-auto self-center"
+                aria-label="关闭列表"
+                onClick={() => setListOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {source === 'mine' ? (
+                <TradeList onSelectTrade={handleSelectTrade} onSymbolChange={handleSymbolChange} onHide={() => setListOpen(false)} />
+              ) : (
+                <MasterList selectedTrader={selectedTrader} onSelectTrader={handleSelectTrader} onHide={() => setListOpen(false)} />
+              )}
+            </div>
           </div>
-          {source === 'mine' ? (
-            <TradeList onSelectTrade={handleSelectTrade} onSymbolChange={handleSymbolChange} onHide={() => setListOpen(false)} />
-          ) : (
-            <MasterList selectedTrader={selectedTrader} onSelectTrader={handleSelectTrader} onHide={() => setListOpen(false)} />
-          )}
         </div>
 
         {/* 右侧详情浮卡：选中驱动的持仓详情 / 高手画像（§2.4） */}

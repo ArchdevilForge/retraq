@@ -301,7 +301,8 @@ def test_train_liquidation_settles_run(browser, seed, api):
             rise = (max(b["high"] for b in fut) / mark) - 1
             if max(dip, rise) >= 0.06:
                 start_idx = i
-                direction = "多" if rise >= dip else "空"
+                # 逆向开仓才会被强平：大涨窗开空、大跌窗开多
+                direction = "空" if rise >= dip else "多"
                 break
         assert start_idx, "no liquidation window found in data"
         bars = _fetch_window(api, symbol, full[start_idx]["timestamp"], full[-1]["timestamp"])

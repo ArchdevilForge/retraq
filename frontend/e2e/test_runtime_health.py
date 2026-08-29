@@ -38,14 +38,14 @@ def test_full_journey_console_and_network(browser, seed):
         # replay: pick a trade, chart linkage, drawings panel
         goto(page, "/replay")
         page.get_by_role("button", name="打开持仓列表").click()
-        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
         expect(page.locator("textarea[placeholder*='这笔交易']")).to_be_visible(timeout=10000)
 
         # masters: leaderboard + seeded trader detail
         page.get_by_role("button", name="打开高手列表").click()
-        expect(page.locator(".oc-float-panel--left button.oc-list-item").first).to_be_visible(timeout=10000)
-        page.locator(".oc-float-panel--left input[placeholder*='搜索']").fill("E2E")
-        row = page.locator(".oc-float-panel--left button.oc-list-item", has_text="E2E甲")
+        expect(page.locator("[aria-label='高手列表'] button.oc-list-item").first).to_be_visible(timeout=10000)
+        page.locator("[aria-label='高手列表'] input[placeholder*='搜索']").fill("E2E")
+        row = page.locator("[aria-label='高手列表'] button.oc-list-item", has_text="E2E甲")
         expect(row).to_be_visible(timeout=10000)
         row.click()
         expect(page.get_by_role("button", name=re.compile("合约交割单"))).to_be_visible(timeout=10000)
@@ -125,7 +125,7 @@ def test_heap_stable_over_long_session(browser, seed):
         cdp.send("Performance.enable")
         goto(page, "/replay")
         page.get_by_role("button", name="打开持仓列表").click()
-        page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
         expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=15000)
         base = _heap_used_mb(cdp)
 

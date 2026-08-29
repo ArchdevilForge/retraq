@@ -36,7 +36,7 @@ class TestVisualBaselines:
 
             # §2.4 弹层范式：列表在浮层里，选中后浮卡弹出
             page.get_by_role("button", name="打开持仓列表").click()
-            page.locator(".oc-float-panel--left button.oc-list-item").first.click()
+            page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
             expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=10000)
             page.wait_for_timeout(700)
             _shot(page, f"replay-trade-selected-{theme}")
