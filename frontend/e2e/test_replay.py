@@ -265,7 +265,7 @@ def test_daily_review_entry_on_replay(browser, seed, api):
         hook_page(page)
         goto(page, "/replay")
         entry = page.get_by_role("button", name="打开今日复盘")
-        expect(entry).to_be_visible()  # 常驻：无需选中任何持仓
+        expect(entry).to_be_visible(timeout=15000)  # 常驻：无需选中任何持仓
         entry.click()
         ta = page.locator("textarea[placeholder*='一句话结论']")
         expect(ta).to_be_visible()

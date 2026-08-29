@@ -88,6 +88,8 @@ type Props = {
   /** 复盘模式自由时间游标：有回调即可拖动，游标线常驻（docs/DESIGN.md §2.3）。 */
   cursorTime?: number | null;
   onCursorDrag?: (timeSec: number) => void;
+  /** 工具条最右侧的扩展位（复盘页「今日复盘」入口等）。 */
+  toolbarExtra?: ReactNode;
 };
 
 type ChartBundle = {
@@ -179,6 +181,7 @@ export default function ChartCanvas({
   onDragPriceLine,
   cursorTime,
   onCursorDrag,
+  toolbarExtra,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -1037,6 +1040,7 @@ export default function ChartCanvas({
             >
               {compareEnabled ? '隐藏对比' : '多交易对对比'}
             </button>
+            {toolbarExtra}
           </div>
         </div>
         <div className="relative min-h-0 flex-1">

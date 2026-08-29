@@ -45,8 +45,10 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
     );
   }
 
-  const directionLabel = trade.direction === 'long' ? '多' : trade.direction === 'short' ? '空' : trade.direction;
-  const directionColor = trade.direction === 'long' ? 'oc-text-profit' : trade.direction === 'short' ? 'oc-text-loss' : '';
+  // §9 方向标签：做多标绿 / 做空标红；历史数据存在大写方向，统一小写归一
+  const dir = trade.direction?.toLowerCase();
+  const directionLabel = dir === 'long' ? '做多' : dir === 'short' ? '做空' : trade.direction;
+  const directionColor = dir === 'long' ? 'oc-text-profit' : dir === 'short' ? 'oc-text-loss' : '';
   const profitColor = (trade.profit ?? 0) >= 0 ? 'oc-text-profit' : 'oc-text-loss';
   const holdMs =
     trade.exit_time != null && trade.entry_time != null ? trade.exit_time - trade.entry_time : null;

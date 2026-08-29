@@ -7,7 +7,13 @@ import DailyReview from '../components/replay/DailyReview';
 import MasterList from '../components/masters/MasterList';
 import MasterDetailPanel from '../components/masters/MasterDetailPanel';
 import { useDataset } from '../context/DatasetContext';
-import { fetchTradesWithTotal, type MasterPosition, type MasterTrader, type Trade } from '../services/api';
+import {
+  fetchSymbolStats,
+  fetchTradesWithTotal,
+  type MasterPosition,
+  type MasterTrader,
+  type Trade,
+} from '../services/api';
 import { fmtMoney } from '../utils/format';
 
 type ReplaySource = 'mine' | 'masters';
@@ -82,6 +88,26 @@ export default function ReplayPage() {
     [selfCompareTrades],
   );
 
+  // §1 图表绝对主角：进入复盘页即有图——默认加载持仓最多的币种，交易列表退为筛选器
+  const [autoSymbolDone, setAutoSymbolDone] = useState(false);
+  useEffect(() => {
+    if (activeDatasetId == null || autoSymbolDone) return;
+    let ignore = false;
+    fetchSymbolStats()
+      .then((stats) => {
+        if (ignore) return;
+        const top = Object.entries(stats.symbol_distribution).sort(([, a], [, b]) => b - a)[0];
+        if (top) {
+          setSymbol((cur) => cur || top[0]);
+          setAutoSymbolDone(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [activeDatasetId, autoSymbolDone]);
+
   const handleSymbolChange = useCallback((nextSymbol: string) => {
     setSymbol(nextSymbol);
     if (!nextSymbol) setSelectedTrade(null);
@@ -139,6 +165,7 @@ export default function ReplayPage() {
               selectedTrade={activeTrade}
               noFills={source === 'masters'}
               selfCompareTrades={source === 'masters' && compareOpen ? selfCompareTrades : null}
+              toolbarExtra={<DailyReview />}
             />
           ) : noDataset ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
@@ -240,8 +267,6 @@ export default function ReplayPage() {
           </div>
         ) : null}
 
-        {/* 常驻「今日复盘」入口（docs/DESIGN.md §6） */}
-        <DailyReview />
       </div>
     </div>
   );

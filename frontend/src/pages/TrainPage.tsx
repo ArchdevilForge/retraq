@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import TrainingChart from '../components/TrainingChart';
 import { useToast } from '../components/ToastHost';
 import { useTrainingRun } from '../hooks/useTrainingRun';
-import { saveTrainingSession, TIMEFRAMES, type Timeframe } from '../services/api';
+import { fetchSymbolStats, saveTrainingSession, TIMEFRAMES, type Timeframe } from '../services/api';
 import { useDataset } from '../context/DatasetContext';
 import {
   DEFAULT_CONTEXT_BARS,
@@ -175,6 +175,36 @@ export default function TrainPage() {
   const [triggerPrice, setTriggerPrice] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
   const [savingRun, setSavingRun] = useState(false);
+
+  // 交易对建议：本地已有 K 线/持仓的币种优先（不必手打 symbol）
+  const [symbolHints, setSymbolHints] = useState<string[]>([]);
+  useEffect(() => {
+    let ignore = false;
+    fetchSymbolStats()
+      .then((stats) => {
+        if (ignore) return;
+        setSymbolHints(
+          Object.entries(stats.symbol_distribution)
+            .sort(([, a], [, b]) => b - a)
+            .map(([sym]) => sym),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const applyRangePreset = (days: number) => {
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    const toLocal = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    setStartLocal(toLocal(start));
+    setEndLocal(toLocal(end));
+  };
 
   const pool = useMemo(
     () =>
@@ -443,9 +473,31 @@ export default function TrainPage() {
                 <input
                   className="oc-input-wrap"
                   value={symbol}
+                  list="train-symbol-hints"
                   onChange={(e) => setSymbol(e.target.value)}
+                  placeholder="选择或输入，如 BTC-USDT"
                 />
+                <datalist id="train-symbol-hints">
+                  {[...new Set([...symbolHints, ...pool])].map((sym) => (
+                    <option key={sym} value={sym} />
+                  ))}
+                </datalist>
               </label>
+              <div className="flex flex-col gap-1 text-[13px]">
+                时间范围
+                <div className="flex gap-1">
+                  {([1, 3, 7, 30] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className="oc-btn oc-btn--sm oc-btn--secondary flex-1 px-1"
+                      onClick={() => applyRangePreset(d)}
+                    >
+                      近 {d} 天
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="flex flex-col gap-1 text-[13px]">
                 开始
                 <input

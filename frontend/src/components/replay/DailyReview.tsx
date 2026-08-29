@@ -5,7 +5,8 @@ import { useToast } from '../ToastHost';
 import { periodKey } from '../../utils/review';
 
 /**
- * 复盘页常驻「今日复盘」入口（docs/DESIGN.md §6 / docs/PRODUCT.md §三）：
+ * 复盘页常驻「今日复盘」入口（docs/DESIGN.md §6 / docs/PRODUCT.md §三）。
+ * 按钮嵌在图表工具条最右（不遮挡时间轴），展开卡片为右上浮层；
  * 一句话结论写全局时间线（daily period），与分析页复盘 tab 共享同一份数据。
  */
 export default function DailyReview() {
@@ -50,9 +51,22 @@ export default function DailyReview() {
   };
 
   return (
-    <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2">
+    <>
+      <button
+        type="button"
+        className={`oc-btn oc-btn--sm oc-btn--secondary shrink-0${open ? ' oc-btn--primary' : ''}`}
+        aria-label="打开今日复盘"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <NotebookPen className="h-3.5 w-3.5" aria-hidden />
+        今日复盘
+      </button>
       {open ? (
-        <div className="panel-card w-[320px] space-y-2" data-testid="daily-review-card">
+        <div
+          className="panel-card fixed right-3 top-[64px] z-[60] w-[320px] space-y-2"
+          data-testid="daily-review-card"
+        >
           <div className="panel-card-title flex items-center justify-between">
             <span>今日复盘 · {todayKey}</span>
             <button
@@ -80,17 +94,7 @@ export default function DailyReview() {
           </button>
           <p className="text-[11px] oc-text-faint">结论存全局时间线，与分析页复盘 tab 同步，可随时回看。</p>
         </div>
-      ) : (
-        <button
-          type="button"
-          className="oc-btn oc-btn--sm oc-btn--secondary"
-          aria-label="打开今日复盘"
-          onClick={() => setOpen(true)}
-        >
-          <NotebookPen className="h-3.5 w-3.5" aria-hidden />
-          今日复盘
-        </button>
-      )}
-    </div>
+      ) : null}
+    </>
   );
 }

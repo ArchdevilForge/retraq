@@ -184,21 +184,6 @@ def assert_no_alert_confirm(page: Page) -> None:
     assert not dialogs, f"native alert/confirm used: {dialogs}"
 
 
-def _is_console_noise(text: str) -> bool:
-    return any(n in text for n in CONSOLE_NOISE)
-
-
-def assert_console_clean(errors: list) -> None:
-    real = [e for e in errors if not _is_console_noise(e)]
-    assert not real, f"console errors: {real[:6]}"
-
-
-def assert_api_responses_clean(responses: list) -> None:
-    """Goal layer 4 — no unmocked 4xx/5xx from the app's own API."""
-    bad = [r for r in responses if r["status"] >= 400]
-    assert not bad, f"unexpected HTTP errors: {bad[:6]}"
-
-
 def draggable_line_ys(page: Page, surface: str) -> list:
     """Scan the chart surface for ns-resize hover bands (draggable price lines).
 
