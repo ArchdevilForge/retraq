@@ -1,30 +1,104 @@
-# Retraq — Product
+# Retraq — Product（产品规范）
 
-## Product Purpose
+> v2 修订（2026-08-29）：经全功能 grill-me 拷问收敛。对标基准：**TradingView**（图表全屏范式 + Bar Replay 交互）。
 
-Local-first crypto futures trade replay and journal analytics. Users import exchange delivery sheets, browse trades, replay on K-line charts with fill markers, and review performance statistics.
+## 一、产品定位
 
-## Users
+本地优先（local-first）的加密货币合约**交易复盘工具**。核心是一个统一的**复盘引擎**——全屏 K 线 + 时间游标 + 交易叠加 + 标注系统——在此之上承载三个场景：
 
-Individual traders reviewing their own history; desktop-first, long sessions, data-dense but calm reading.
+1. **复盘自己的交易**（`self`）
+2. **复盘别人的交易**（`master`，币安 copy-trade 高手）
+3. **训练**（`sim`，未来隐藏的实时模拟盘）
 
-## Register
+看盘软件负责"知道发生了什么"，Retraq 只负责一件事：**通过复盘提升你自己的决策**。
 
-**product** — design serves clarity and trust; not marketing flair.
+## 二、用户与调性
 
-## Brand tone (OpenCode-aligned devtool)
+- 用户：个人合约交易者；桌面端、长会话、高信息密度但克制。
+- 调性：专业、冷静、可信的工具感；杜绝娱乐化与赌场化。
+- 反面参照：通用蓝色 SaaS 仪表盘、毛玻璃堆叠、Emoji 图标、渐变横幅。
 
-- Calm, precise, trustworthy — tools for thinking, not casino UI.
-- Neutral grey chrome; warm peach accent for active states only.
-- Generous whitespace in chrome; density only in data tables/lists.
-- No neon profit green as brand color; semantic green/red only for PnL.
+## 三、核心概念
 
-## Anti-references
+### 复盘引擎（唯一引擎）
 
-- Generic blue SaaS dashboard, glassmorphism stacks, emoji icons, gradient heroes, side-stripe accent borders.
+- 一张全屏 K 线画布 + 时间游标；复盘与训练是同一引擎的两个模式：
+  - **复盘模式**：未来可见；交易锚定（点持仓自动定位到其时间段）+ bar 级自由游标（任意前进后退），两者都要。
+  - **训练模式**：未来隐藏；实时决策下单，结果落库。
+- 图表、游标、标注、统计组件全场景复用——**禁止出现第二套图表实现**（现有 `ChartManager` / `TrainingChart` 双实现必须合一）。
 
-## Strategic principles
+### 数据集与主体（owner）
 
-1. One window, no page scroll — panels scroll internally.
-2. K-line is the hero on replay; analysis is readable statistics only.
-3. Accessibility: contrast, focus rings, pointer on clickables.
+- 每个数据集必须带主体：`self`（实盘）/ `master:{trader_id}`（高手）/ `sim`（训练模拟）。
+- 复盘引擎无差别加载任何 owner 的数据集；分析页默认只统计 `self`，提供 sim 对照与 master 视角切换。
+- 数据集互不污染：**废弃"克隆高手交易到我的数据集"**。
+
+### 三层记录模型（行业最佳实践）
+
+1. **数据层**（自动）：成交与持仓，导入即得。
+2. **上下文层**（半自动）：setup 标签、错误分类、文字笔记、评分（A+/B/C）。
+3. **心理层**（手动）：情绪记录、执行纪律笔记、计划止损/目标价 vs 实际对比。
+
+复盘的价值在第二、三层——产品必须让这两层的记录摩擦趋近于零。
+
+### 复盘节奏
+
+- 日复盘 5 分钟 / 周复盘 30 分钟 / 月复盘 1 小时，各配固定问题清单（计划遵守了吗、违规了什么、情绪状态、明天保持/改变什么）。
+- 入口双通道：分析页按节奏生成复盘引导；复盘页常驻"今日复盘"入口。
+- 复盘结论（一句话结论、周记）存**全局时间线**（独立于数据集，生命周期长于数据集），随时回看。
+
+## 四、数据导入：币安自动同步
+
+摩擦是复盘习惯的头号杀手——导入必须自动发生。
+
+- 优先路径：**自动拉取**。本地后端持有 read-only API key（仅"读取"权限，禁交易/禁提现），通过 ccxt 增量拉取成交（`userTrades`，单次 ≤1000 条、时间戳翻页、约 6 个月回看；经 `income` 记录发现交易过的 symbol），复用现有 `binance_trade_aggregate` 聚合成持仓。
+- 密钥安全：存本地 `.env`（进 `.gitignore`），绝不入库、绝不提交、绝不外发；建议配 IP 白名单以绕开 90 天强制过期。
+- 触发：后端启动时自动增量同步 + 数据源切换器内手动"同步"按钮。
+- 手动 Excel/CSV 导入保留为兜底路径。
+
+## 五、高手：复盘别人的交易
+
+看别人的交易只有三种信息增益，产品设计全部围绕它们：
+
+1. **模仿**：单笔深度复盘 = 复盘引擎换数据源。复盘页左栏"我的 / 高手"分区切换，同一套图表与标注工具，**高手页不再独立存在**。
+2. **对照**：同一段行情"他 vs 我"——高手持仓叠加在同一张图上（复用现有 overlay 能力），与自己同期持仓并排对照。这是信息增益最大的形态。
+3. **筛选**：排行榜只是索引，不是功能。默认排序用 Sharp / MDD / 交易天数 + 风格筛选（低杠杆/趋势/高盈亏比…），**不按 ROI 排序**（幸存者偏差 + 短期方差）。
+
+约束与边界：
+
+- 币安数据仅 position 级（一进一出，无逐笔成交与心理数据）——这是复盘深度天花板；高手风格心法锚定展示在其持仓旁补足语境。
+- 实时抄单（跟单执行）明确不做，超出本地复盘工具边界。
+
+## 六、训练：全真模拟
+
+目标：尽量复刻真实市场交易（TradingView Replay Trading 为对标）。资金费率与滑点明确不做。
+
+- 订单：市价 / 限价 / 止损 / 止损限价；**图上拖线 TP/SL 括号单**（价格触发自动平仓）；反向开仓；部分平仓。
+- 风控：cross-margin 强平（已有）。
+- 开局面板：初始资金 / 基础货币 / 手续费率（默认 0 可改，暂不强调）/ 杠杆与保证金模式。
+- K 线：与复盘同源（ccxt + 本地缓存），训练与复盘天然一致。
+- **结果落库**：会话结束生成 `sim` 数据集，可进复盘引擎二次复盘、进分析页做"模拟 vs 实盘"对比——超越 TradingView（其 session 明确不保存）。
+
+## 七、分析
+
+- 报告集固定：按 setup 胜率与盈亏、按错误分类累计损失、R 值分布、按时段表现、纪律遵守率。
+- **图表化拉满**：一切能可视化的统计不落表格。
+- 默认只统计 `self`；提供"模拟 vs 实盘"对比视角与 master 视角切换。
+
+## 八、学习（心法）
+
+- 独立学习页取消；心法内容（40+ 通用卡片、6 段高手心法）拆散为**场景内上下文提示**：复盘/训练中按错误标签与持仓语境弹出对应卡片（如标记"追高"时弹出对应心法卡）。
+
+## 九、导航
+
+顶栏仅三项：**复盘 / 训练 / 分析** + 数据源切换器（含高手分区与币安同步入口）。
+
+## 十、落地顺序
+
+1. 统一图表引擎 + 全屏工作台（复盘/高手合并、深色默认）
+2. 标注系统（笔记 / 标签 / 评分 / 画线落库）
+3. 分析页图表化 + 复盘节奏
+4. 训练全真化（含结果落库）
+5. 心法上下文化
+
+币安自动同步独立并行，建议紧跟第 2 步（让标注系统吃到更完整的 fill 级数据）。

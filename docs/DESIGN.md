@@ -1,42 +1,176 @@
-# Retraq — Design System (opencode.ai website)
+# Retraq — UI/UX 约束与设计规范 (Design System & Interaction Constitution)
 
-Visual language from [opencode.ai](https://opencode.ai/) marketing site — **not** OpenCode Desktop `packages/ui` (OC-2).
+本文档是 Retraq 前端界面的**最高 UI/UX 约束规范**。所有新增页面、组件、交互与样式修改必须**100% 严格遵守**本规范，保持极致的一致性与专业性。
 
-## Implementation
+> v2 修订（2026-08-29）：经全功能 grill-me 拷问收敛。布局范式从"三栏工作台"改为"**图表全屏 + 浮层面板**"；深色成为默认主题；新增标注系统与回放控制规范。
 
-- **Tokens + components**: `frontend/src/styles/opencode.css` (`oc-*` classes)
-- **Tailwind bridge**: `frontend/src/index.css` `@theme`
-- **Do not use DaisyUI component classes** in new UI
+---
 
-## Color strategy
+## 1. 核心设计哲学 (Design Philosophy)
 
-Warm cream canvas `#fdfcfc`, ink `#201d1d`, hairline borders. **Light / dark** via `data-theme` + navbar toggle (`ThemeProvider`). Chart colors read `--oc-chart-*` CSS vars and re-apply on theme change.
+Retraq 定位为**专业、克制、沉浸的本地交易复盘与量化分析工具**（对齐 [opencode.ai](https://opencode.ai/) 工程美学，交互范式对标 TradingView）。
 
-## Color strategy
+- **工具感与专业感**：专为长时间沉浸式复盘设计，界面信息密度高但排版呼吸感强，杜绝娱乐化、赌场化或花哨设计。
+- **图表绝对主角 (Chart-First)**：K 线画布占据视口全部空间，是页面的背景层；一切功能面板以浮层形式叠加其上，**不得与图表平分版面**。
+- **单视口工作台 (Single Viewport Workstation)**：整个应用窗口绝无外部全局滚动条，所有子面板内部独立纵向滚动。
+- **全等宽硬核排版 (100% Monospace)**：全站统一使用 `IBM Plex Mono` 字体，表格与数值严格对齐。
 
-Monochrome chrome; semantic Apple HIG colors for PnL (`#30D158` / `#FF3B30`). Chart panel uses theme-aware `--oc-chart-bg` (light `#f1eeee`, dark `#201d1d`).
+---
 
-## Typography
+## 2. 布局范式 (Layout Paradigm)
 
-100% IBM Plex Mono (Berkeley Mono substitute). Uppercase section labels. Body 14–16px, KPI 20px tabular.
+### 2.1 图表全屏画布（唯一范式）
 
-## Layout
+复盘、训练、分析共用同一套全屏画布结构：
 
-Shared **2px grid borders** between panels (`oc-workbench`), like opencode.ai section blocks. No shadows, no pill chrome.
+- K 线图表铺满视口（`absolute inset-0` 或等效），作为页面背景层；
+- 所有面板（列表、详情、工具条）以**浮层**叠加在图表上，浮层背景用 `--background-weak` + 2px 网格边框与图表建立层次分隔；
+- 页面最外层容器固定为 `flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2`；
+- 所有可滚动区域必须显式声明 `min-h-0 flex-1 overflow-y-auto`，禁止高度撑爆父级视口。
 
-## Components (oc-*)
+### 2.2 顶部工具条（浮层）
 
-| Class | Website equivalent |
-|-------|-------------------|
-| `oc-navbar`, `oc-tabs`, `oc-tab` | manpage header + bordered segment nav |
-| `oc-btn--primary/secondary/ghost` | ink CTA + hairline secondary |
-| `oc-input-wrap` | bordered command input |
-| `panel`, `oc-workbench` | cream section grid |
-| `oc-chart-shell` | dark TUI hero panel |
-| `oc-chip` | uppercase filter tag |
-| `oc-stat-grid` | bordered KPI grid |
-| `oc-empty__desc::before` | `[+]` ASCII bullet prefix |
+- 时间周期切换（5m / 15m / 1h / 4h / 1d）；
+- 数据源切换器：我的数据集 ↔ 高手分区（"我的 / 高手"切换在复盘页左栏顶部）↔ sim 数据集；含币安同步入口；
+- 模式标识：复盘模式 / 训练模式；训练模式显示回放控制条。
 
-## Motion
+### 2.3 回放控制条（Replay Transport）
 
-120ms ease on color/background only. Respect `prefers-reduced-motion`.
+对标 TradingView Bar Replay：
+
+- 控制：播放 / 暂停 / 单步前进 / 倍速 / 跳到游标（复盘模式下为自由拖动时间游标）；
+- 快捷键：`Shift+↓` 播放/暂停，`Shift+→` 单步；
+- 会话可恢复：回到上次游标位置（训练会话恢复由落库数据集支撑）；
+- 游标线在图上有持续的视觉存在（细竖线 + 位置标签），不得隐形。
+
+### 2.4 左右浮层面板
+
+- 左栏（持仓列表 / 高手榜 + 交割单）、右栏（持仓详情 / 交割明细）浮层化，可一键收起/展开，使用统一的 `data-list-open` 与 `data-detail-open` 状态控制；
+- 收起时必须在图表两侧显式渲染 `oc-panel-rail--left` 与 `oc-panel-rail--right` 导轨按钮，点击秒级展开；
+- 面板浮层宽度：左 300~340px，右 320~380px；收起时图表自动扩展占满。
+
+### 2.5 导航
+
+顶栏仅三项：**复盘 / 训练 / 分析**。学习页取消（内容转为场景内上下文提示，见 §7）。
+
+---
+
+## 3. 色彩与语义规范 (Color Tokens & Semantics)
+
+Retraq 实行**严格的主题双模式**（深色 Dark 为默认 / 浅色 Light 次选），由 `ThemeProvider` (`data-theme`) 驱动，禁止硬编码未适配主题的颜色。
+
+| 语义角色 | 深色模式 (Dark，默认) | 浅色模式 (Light) | 变量 / 类名 | 规则说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| **画布底色** | `#141212` | `#fdfcfc` (Warm Cream) | `--background-base` | 全站基底，温润不刺眼 |
+| **面板底色 1** | `#201d1d` | `#f1eeee` | `--background-weak` | 浮层面板默认背景 |
+| **面板底色 2** | `#282525` | `#e8e4e4` | `--surface-raised-base` | 激活项、悬浮态与输入框 |
+| **主要文字** | `#fdfcfc` | `#201d1d` | `--text-strong` | 标题、核心数值、强调文本 |
+| **次要文字** | `#9a9898` | `#646262` | `--text-base` | 正文、普通标签、表格内容 |
+| **弱化文字** | `#646262` | `#9a9898` | `--text-weak` | 时间戳、单位、次级注释 |
+| **边框线条** | `rgba(255, 255, 255, 0.1)` | `rgba(15, 0, 0, 0.12)` | `--border-weak-base` | 2px 网格边框或 1px 细线 |
+| **强调主色** | `#fdfcfc` (亮白) | `#201d1d` (墨黑) | `--oc-accent` | 按钮、活跃状态标线 |
+| **盈利 / 做多** | `#30D158` (Apple HIG) | `#248a3d` / `#30D158` | `oc-text-profit` | 语义盈亏绿，禁止使用刺眼荧光绿 |
+| **亏损 / 做空** | `#FF3B30` (Apple HIG) | `#c41e12` / `#FF3B30` | `oc-text-loss` | 语义盈亏红 |
+
+---
+
+## 4. 排版与字体系统 (Typography & Tabular Law)
+
+1. **全站等宽字体**：
+   - 必须使用 `var(--oc-font-mono)`（`IBM Plex Mono`, `ui-monospace`, `SF Mono`, `Menlo`）；
+   - 禁止混用无衬线（Inter, Roboto 等）导致数字错位。
+2. **数字对齐 (Tabular Nums)**：
+   - 所有金额、价格、盈亏、收益率、数量、时间必须加上 `tabular-nums font-mono`，确保上下行数字基线与小数点对齐。
+3. **字号阶梯**：
+   - 微型标签 / 时间戳：`10px` / `11px`
+   - 列表正文 / 次要数值：`12px` / `13px`
+   - 标准正文 / 表头：`13px` / `14px`
+   - 面板大标题：`15px` / `16px`
+   - 核心 KPI 看板：`20px` ~ `24px`
+
+---
+
+## 5. 组件规范与类名前缀 (`oc-*` Standards)
+
+所有界面元素必须优先复用 `frontend/src/styles/opencode.css` 中的 `oc-*` 标准类名：
+
+| 组件类别 | 标准类名 | 使用场景与要求 |
+| :--- | :--- | :--- |
+| **导航栏** | `oc-navbar`, `oc-tabs`, `oc-tab`, `oc-tab--active` | 顶部导航（复盘/训练/分析），活跃项底部高亮 |
+| **按钮** | `oc-btn`, `oc-btn--primary`, `oc-btn--secondary`, `oc-btn--ghost`, `oc-btn--sm` | 统一样式，禁止裸写未封装的 `<button>` 样式 |
+| **输入框** | `oc-input`, `oc-select` | 边框细线、聚焦 outline 统一 |
+| **列表项** | `oc-list-item`, `oc-list-item--active` | 左侧浮层条目，左侧微 padding 活跃指示条 |
+| **统计网格** | `oc-stat-grid`, `oc-card` | KPI 数据看板卡片，四方细线对齐 |
+| **加载动画** | `oc-spinner`, `oc-spinner--xs`, `oc-spinner--sm`, `oc-spinner--md` | 统一极简双环旋转指示器 |
+| **空状态** | `oc-empty`, `oc-empty__title`, `oc-empty__desc` | 统一带 `[+]` ASCII 提示符的空状态占位 |
+| **全局通知** | `useToast()` / `oc-toast` (`--info/--success/--warning/--error`) | 统一右下角堆叠悬浮吐司，禁止 `alert()` |
+| **回放控制** | `oc-replay-bar`, `oc-replay-btn` | 训练模式 / 时间游标回放控制条（浮层） |
+| **标注工具** | `oc-annotate-toolbar` | 画线工具竖条，浮层于图表左缘 |
+| **标签 / 评分** | `oc-tag`, `oc-tag-input`, `oc-grade-badge` | setup/错误标签输入、A+/B/C 评分徽章 |
+| **心法提示** | `oc-hint-card` | 场景内上下文心法卡，可关闭，不遮挡关键行情 |
+
+---
+
+## 6. 标注系统规范 (Annotation System)
+
+存储粒度分两类，数据模型必须区分：
+
+| 粒度 | 内容 | 行为 |
+| :--- | :--- | :--- |
+| **绑定持仓** | 文字笔记、setup 标签、错误分类、评分（A+/B/C）、情绪记录、计划止损/目标价 | 随持仓增删查，进分析统计 |
+| **绑定 symbol + 时间区域** | 画线标注 | 与持仓无关，回看同一区域时始终可见 |
+
+- 画线工具集固定：横线（已有）、趋势线、水平区域（矩形）、斐波那契回调。新增工具须先修订本规范。
+- 标注**自动保存**，不得打断复盘流；保存失败才 toast 报错。
+- 复盘页常驻"今日复盘"入口（写一句话结论），结论存全局时间线。
+
+---
+
+## 7. 上下文心法提示 (Contextual Hints)
+
+- 独立学习页取消；心法内容以 `oc-hint-card` 出现在复盘/训练场景中；
+- 触发依据：错误标签（如标记"追高"时弹出对应心法卡）、当前持仓的高手风格语境；
+- 提示可关闭、不遮挡关键行情、每条同一持仓只自动弹出一次。
+
+---
+
+## 8. 交互与状态反馈铁律 (Interaction & State Feedback)
+
+1. **永远不出现白屏 / 假死态**：
+   - 任何异步操作（加载列表、拉取 K 线、导入数据、同步币安）必须展示对应的 `oc-spinner` 或骨架态；
+2. **错误处理人性化**：
+   - 网络异常或数据解析失败必须给出**中文友好提示**，并提供「重试」按钮，禁止直接抛出原始异常英文；
+3. **操作结果即时反馈**：
+   - 凡涉及"导入"、"同步"、"删除"、"切换"、"落库"等动作，必须调用 `useToast` 提供明确的 Toast 提示；
+4. **可点击元素手型指针**：
+   - 所有按钮、选项卡、交互卡片必须具有 `cursor: pointer`，并具备微弱的 Hover 背景过渡（`120ms ease`）；
+5. **动效克制与减弱动效适配**：
+   - 仅对背景色、文字颜色和面板透明度做过渡；
+   - 严格尊重 `prefers-reduced-motion`，在无障碍模式下关闭任何复杂位移动画；
+6. **回放即时反馈**：
+   - 游标移动、订单触发、强平命中必须有即时视觉反馈（游标线移动、图上标记闪动）。
+
+---
+
+## 9. 数据格式化统一规范 (Data Formatting Standards)
+
+所有数据展示必须调用 `frontend/src/utils/format.ts` 中的标准格式化函数：
+
+- **金额与价格**：`fmtMoney(val)` —— 保留两位小数，千分位分隔符（如 `2,488.64`、`169,520.87`）；
+- **百分比**：`fmtPct(val)` 或 `${val >= 0 ? '+' : ''}${val.toFixed(1)}%` —— 明确标注正负符号与 1 位小数；
+- **日期与时间**：`fmtDateTime(ms)` —— 严格使用 `Asia/Shanghai (UTC+8)`，格式形如 `2026-08-27 20:30`；
+- **持仓时长**：`fmtDurationMs(ms)` —— 智能格式化为 `X 天 Y 时` 或 `X 时 Y 分`；
+- **交易方向标签**：做多标绿 `LONG` / 做空标红 `SHORT`，并显示杠杆倍数（如 `做多 20x`）。
+
+---
+
+## 10. 绝对禁止项 (Strict Anti-Patterns / Forbidden List)
+
+- ❌ **严禁页面出现全局滚动条**（必须全部由 panel 内部 `overflow-y-auto` 消化）；
+- ❌ **严禁使用 Emoji 充当 UI 功能图标**（统一使用 `lucide-react` 线框图标）；
+- ❌ **严禁使用渐变色文字、毛玻璃叠加层 (Glassmorphism) 或炫酷阴影**；
+- ❌ **严禁硬编码未适配深浅色主题的颜色**（如随意写死 `#fff` 或 `#000`）；
+- ❌ **严禁在同一面板内出现多层卡片嵌套 (Card-in-Card 俄罗斯套娃)**；
+- ❌ **严禁使用浏览器原生 `alert()` 或 `confirm()`**；
+- ❌ **严禁出现第二套图表/回放实现**（训练与复盘必须同一引擎、同一组件）；
+- ❌ **严禁把高手或模拟交易混入 self 数据集**（owner 隔离），分析页默认只展示 self 数据。
