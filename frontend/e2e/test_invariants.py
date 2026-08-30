@@ -11,6 +11,7 @@ from conftest import hook_page, install_guard, new_context
 from helpers import (
     assert_console_clean,
     assert_cursor_pointer,
+    assert_no_viewport_overflow,
     assert_monospace,
     assert_nav_three_tabs,
     assert_no_alert_confirm,
@@ -55,6 +56,7 @@ def test_layout_invariants(browser, seed, path, theme, w, h):
 
         assert_nav_three_tabs(page)        # DESIGN §2.5
         assert_zero_page_scroll(page)      # DESIGN §2.1/§10
+        assert_no_viewport_overflow(page)  # 响应式边界：无元素横向出窗
         assert_monospace(page)             # DESIGN §4.1
         assert_tabular_nums(page, TABULAR_MIN[path])  # DESIGN §4.2
         assert_cursor_pointer(page)        # DESIGN §8.4

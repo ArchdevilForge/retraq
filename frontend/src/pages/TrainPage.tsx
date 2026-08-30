@@ -517,7 +517,7 @@ export default function TrainPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-[13px]">
                   开始
                   <input
@@ -594,7 +594,7 @@ export default function TrainPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-[13px]">
               周期
               <select
@@ -622,7 +622,7 @@ export default function TrainPage() {
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-[13px]">
               虚拟本金 (USDT)
               <input

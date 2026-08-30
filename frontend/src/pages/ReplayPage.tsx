@@ -259,7 +259,10 @@ export default function ReplayPage() {
         </div>
 
         {/* 工具栏右侧按钮层：覆盖在预留槽上（§2.4 TV 顶栏式入口） */}
-        <div ref={toolbarRef} className="absolute right-[10px] top-[13px] z-30">
+        <div
+          ref={toolbarRef}
+          className="absolute right-[10px] top-[13px] z-40 max-lg:bottom-9 max-lg:left-auto max-lg:right-2 max-lg:top-auto"
+        >
           {toolbarButtons}
         </div>
 

@@ -12,7 +12,7 @@ from playwright.sync_api import expect
 from conftest import hook_page, new_context
 from helpers import assert_console_clean, goto
 
-VIEWPORTS = ((1024, 640), (1280, 720))
+VIEWPORTS = ((1024, 640), (1280, 720), (390, 800))
 
 MODAL_SCOPE = {
     "持仓列表": "[aria-label='持仓列表']",

@@ -1041,7 +1041,9 @@ export default function ChartCanvas({
             >
               {compareEnabled ? '隐藏对比' : '多交易对对比'}
             </button>
-            {toolbarSlotWidth ? <div className="shrink-0" style={{ width: toolbarSlotWidth }} aria-hidden /> : null}
+            {toolbarSlotWidth ? (
+              <div className="hidden shrink-0 lg:block" style={{ width: toolbarSlotWidth }} aria-hidden />
+            ) : null}
           </div>
         </div>
         <div className="relative min-h-0 flex-1">

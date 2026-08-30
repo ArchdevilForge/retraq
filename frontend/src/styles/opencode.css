@@ -1015,6 +1015,7 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap; /* 响应式：窄视口右组换行，不裁切入口按钮 */
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 2px solid var(--oc-chart-chrome-border);
@@ -1127,7 +1128,7 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  width: min(340px, 28vw);
+  width: min(340px, calc(100vw - 24px));
   background: var(--background-weak);
   border: 2px solid var(--border-strong-base);
 }
@@ -1138,7 +1139,8 @@
 
 .oc-float-panel--right {
   right: 8px;
-  width: min(380px, 30vw);
+  /* 响应式：窄视口占满可用宽度而不是被 30vw 压瘪 */
+  width: min(380px, calc(100vw - 24px));
 }
 
 .oc-float-panel--hidden {

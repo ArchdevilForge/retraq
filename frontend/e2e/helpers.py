@@ -17,7 +17,7 @@ API_URL = "http://localhost:9527"
 
 NAV_TABS = ("复盘", "训练", "分析")  # DESIGN §2.5 / PRODUCT §九
 PAGES = ("/replay", "/train", "/analysis")
-VIEWPORTS = ((1440, 900), (1280, 800))
+VIEWPORTS = ((1440, 900), (1280, 800), (768, 900), (554, 800), (390, 800))
 FONT_STACK = "IBM Plex Mono"  # DESIGN §4.1
 
 # DESIGN §10 bans emoji as UI icons. Arrows (U+2190-21FF) are typography and
@@ -104,6 +104,28 @@ def goto(page: Page, path: str) -> None:
 
 def navbar(page: Page):
     return page.locator("header.oc-navbar")
+
+
+def assert_no_viewport_overflow(page: Page) -> None:
+    """响应式边界：任何可见元素都不得伸出视口（工具栏裁切即破版）。
+
+    fixed 定位元素（toast/遮罩）有自己的视口约束，由 boundary 测试单独覆盖。
+    """
+    bad = page.evaluate(
+        """() => {
+          const vw = window.innerWidth;
+          const out = [];
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && (r.right > vw + 1 || r.left < -1) && el.getClientRects().length) {
+              if (getComputedStyle(el).position === 'fixed') continue;
+              out.push(String(el.className).slice(0, 50));
+            }
+          }
+          return out;
+        }"""
+    )
+    assert not bad, f"elements overflow the viewport horizontally: {bad[:4]}"
 
 
 def assert_zero_page_scroll(page: Page) -> None:
