@@ -212,6 +212,7 @@ export default function ChartCanvas({
   const prevKlineLenRef = useRef(0);
   const lastCandleTimeRef = useRef<number | null>(null);
   const didInitViewRef = useRef(false);
+  const anchoredKlinesRef = useRef<unknown>(null);
   const pendingRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const [chartEpoch, setChartEpoch] = useState(0);
   const [chartTheme, setChartTheme] = useState(() => readChartTheme());
@@ -551,7 +552,10 @@ export default function ChartCanvas({
     }
 
     if (candles.length) {
-      if (!didInitViewRef.current) {
+      // 交易锚定：新数据到达时重放可见窗（慢网下 deferred setVisibleRange 可能先于
+      // 正确数据落在旧数据上，闩死后图表缩放到无关区域）。playback（visibleRange=null）不受影响。
+      const reanchor = visibleRange != null && anchoredKlinesRef.current !== klines;
+      if (!didInitViewRef.current || reanchor) {
         const target = visibleRange ?? null;
         let applied = false;
         if (target && target.from != null && target.to != null) {
@@ -569,6 +573,7 @@ export default function ChartCanvas({
             /* ignore */
           }
         }
+        anchoredKlinesRef.current = visibleRange != null ? klines : null;
         didInitViewRef.current = true;
         followEndRef.current = true;
       } else if (playback && followEndRef.current && len > prevKlineLenRef.current) {

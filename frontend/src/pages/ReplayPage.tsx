@@ -96,25 +96,41 @@ export default function ReplayPage() {
     [selfCompareTrades],
   );
 
-  // §1 图表绝对主角：进入复盘页即有图——默认加载持仓最多的币种，交易列表退为筛选器
-  const [autoSymbolDone, setAutoSymbolDone] = useState(false);
+  // §1 图表绝对主角：进入复盘页即有图——默认加载持仓最多的币种，交易列表退为筛选器。
+  // 不用一次性闩：symbol 被清空（切数据集/清筛选）或数据集变更时重新自挑，
+  // 否则 TradeList 的重置会把页面永久留在「从工具条选择」的误导空态。
+  const [symbolPick, setSymbolPick] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [pickNonce, setPickNonce] = useState(0);
   useEffect(() => {
-    if (activeDatasetId == null || autoSymbolDone) return;
+    if (activeDatasetId == null || symbol) return;
     let ignore = false;
+    setSymbolPick('loading');
     fetchSymbolStats()
       .then((stats) => {
         if (ignore) return;
         const top = Object.entries(stats.symbol_distribution).sort(([, a], [, b]) => b - a)[0];
-        if (top) {
-          setSymbol((cur) => cur || top[0]);
-          setAutoSymbolDone(true);
-        }
+        if (top) setSymbol(top[0]);
+        setSymbolPick('ready'); // 无持仓也算就绪：空态提示此时是准确的
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!ignore) setSymbolPick('error');
+      });
     return () => {
       ignore = true;
     };
-  }, [activeDatasetId, autoSymbolDone]);
+  }, [activeDatasetId, symbol, pickNonce]);
+
+  const retrySymbolPick = useCallback(() => setPickNonce((n) => n + 1), []);
+
+  // 数据集切换：清选择与 symbol；symbol 清空后由上面的 auto-pick 立即重挑 top 币种。
+  // symbol 所有权只在 ReplayPage——TradeList 不得回写空值（会与 auto-pick 竞态）。
+  useEffect(() => {
+    setSelectedTrade(null);
+    setSelectedTrader(null);
+    setSelectedPosition(null);
+    setSymbol('');
+    setSymbolPick('loading');
+  }, [activeDatasetId]);
 
   // 弹层关闭：Esc 关最上层浮卡/浮层；点击列表浮层外部关闭（浮卡随选中存续）
   useEffect(() => {
@@ -136,6 +152,12 @@ export default function ReplayPage() {
       document.removeEventListener('mousedown', onDown);
     };
   }, [listOpen, detailOpen]);
+
+  // 列表弹层打开即落焦搜索框（TV symbol search 习惯：开屏可直打筛选）
+  useEffect(() => {
+    if (!listOpen) return;
+    listRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+  }, [listOpen]);
 
 
   const handleSymbolChange = useCallback((nextSymbol: string) => {
@@ -251,6 +273,18 @@ export default function ReplayPage() {
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
               <EmptyDataset />
             </div>
+          ) : symbolPick === 'loading' ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <span className="oc-spinner oc-spinner--md" aria-label="加载持仓统计…" />
+            </div>
+          ) : symbolPick === 'error' ? (
+            <div className="oc-empty">
+              <p className="oc-empty__title">持仓统计加载失败</p>
+              <p className="oc-empty__desc">确认后端已启动后重试</p>
+              <button type="button" className="oc-btn oc-btn--secondary mt-3" onClick={retrySymbolPick}>
+                重试
+              </button>
+            </div>
           ) : (
             <div className="oc-empty">
               <p className="oc-empty__title">从工具条选择持仓或高手开始复盘</p>
@@ -258,10 +292,10 @@ export default function ReplayPage() {
           )}
         </div>
 
-        {/* 工具栏右侧按钮层：覆盖在预留槽上（§2.4 TV 顶栏式入口） */}
+        {/* 工具栏右侧按钮层：覆盖在预留槽上（§2.4 TV 顶栏式入口）；z 高于列表弹窗背板，随时可切换/收起 */}
         <div
           ref={toolbarRef}
-          className="absolute right-[10px] top-[13px] z-40 max-lg:bottom-9 max-lg:left-auto max-lg:right-2 max-lg:top-auto"
+          className="absolute right-[10px] top-[13px] z-[80] max-lg:bottom-9 max-lg:left-auto max-lg:right-2 max-lg:top-auto"
         >
           {toolbarButtons}
         </div>

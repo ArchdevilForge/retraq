@@ -209,7 +209,8 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
   const [compareSymbol, setCompareSymbol] = useState<string | null>(null);
   const [symbolOptions, setSymbolOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
-  // 复盘自由时间游标（§2.3）：默认停在最新收盘 bar，可整体拖动
+  // 复盘自由时间游标（§2.3）：持续可见。默认停在可见范围末根 bar；换标的/选持仓/
+  // 换周期后若游标落在新窗口之外（屏外 = 隐形），拉回新窗口末根 bar。
   const [cursorSec, setCursorSec] = useState<number | null>(null);
 
   const rangeForTrade = useMemo(() => {
@@ -236,15 +237,16 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
     return { from: align(rawStartSec, 'floor') as Time, to: align(rawEndSec, 'ceil') as Time };
   }, [activeTimeframe, selectedTrade]);
 
-  // 复盘自由时间游标（§2.3）：默认停在可见范围内的最后一根 bar；换符号重置
+  // 复盘自由时间游标（§2.3）：持续可见。默认停在可见范围末根 bar；换标的/选持仓/
+  // 换周期后若游标落在新窗口之外（屏外 = 隐形），拉回新窗口末根 bar。
   useEffect(() => {
-    setCursorSec(null);
-  }, [selectedTrade?.symbol, symbol]);
-  useEffect(() => {
-    if (cursorSec != null || mainKlines.length === 0) return;
+    if (mainKlines.length === 0) return;
     const vr = visibleRange;
-    const inView = vr ? mainKlines.filter((k) => k.time >= Number(vr.from) && k.time <= Number(vr.to)) : [];
-    const last = inView.length ? inView[inView.length - 1] : mainKlines[mainKlines.length - 1];
+    const inView = vr
+      ? mainKlines.filter((k) => k.time >= Number(vr.from) && k.time <= Number(vr.to))
+      : mainKlines;
+    if (cursorSec != null && inView.some((k) => k.time === cursorSec)) return;
+    const last = inView[inView.length - 1] ?? mainKlines[mainKlines.length - 1];
     setCursorSec(last.time);
   }, [mainKlines, cursorSec, visibleRange]);
 

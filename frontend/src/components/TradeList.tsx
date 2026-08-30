@@ -78,12 +78,11 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
 
   useEffect(() => {
     if (activeDatasetId == null) return;
+    // 只重置本地筛选；symbol 与选中由 ReplayPage 统一清理（回写空值会与 auto-pick 竞态）
     setSymbolFilter(ALL);
     setPairSearch('');
     setSelectedId(null);
-    onSelectTrade(null);
-    onSymbolChange('');
-  }, [activeDatasetId, onSelectTrade, onSymbolChange]);
+  }, [activeDatasetId]);
 
   useEffect(() => {
     if (activeDatasetId == null) return;
