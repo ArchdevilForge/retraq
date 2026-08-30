@@ -247,8 +247,9 @@ def test_train_full_order_flow_save_and_analysis(browser, seed, api):
         page.locator(f"{RIGHT} button.oc-btn", has_text=re.compile(r"^全平$")).click()
         page.wait_for_timeout(300)
 
-        # 9) 揭晓 → 落库本局 → sim 数据集（§六 结果落库，超越 TradingView 不保存 session）
+        # 9) 揭晓（两步确认，评审定稿）→ 落库本局 → sim 数据集（§六 结果落库）
         page.locator("button:has-text('揭晓')").click()
+        page.locator("button:has-text('确认揭晓？')").click()
         save_btn = page.locator("button:has-text('落库本局')")
         expect(save_btn).to_be_visible(timeout=5000)
         save_btn.click()

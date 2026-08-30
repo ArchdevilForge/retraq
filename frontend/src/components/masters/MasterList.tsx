@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback } from 'react';
-import { Search, ChevronLeft } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { MasterTrader } from '../../services/api';
 import { fetchMasterTraders } from '../../services/api';
 import { fmtMoney } from '../../utils/format';
@@ -7,7 +7,6 @@ import { fmtMoney } from '../../utils/format';
 interface Props {
   selectedTrader: MasterTrader | null;
   onSelectTrader: (trader: MasterTrader) => void;
-  onHide?: () => void;
 }
 
 type SortKey = 'roi' | 'pnl' | 'win_rate' | 'position_count' | 'mdd' | 'sharp_ratio';
@@ -138,7 +137,7 @@ const TraderRow = memo(function TraderRow({
   );
 });
 
-export default function MasterList({ selectedTrader, onSelectTrader, onHide }: Props) {
+export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
   const [traders, setTraders] = useState<MasterTrader[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -191,16 +190,6 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
               {total} 位
             </span>
           </div>
-          {onHide && (
-            <button
-              type="button"
-              className="oc-btn oc-btn--sm oc-btn--ghost"
-              onClick={onHide}
-              aria-label="收起列表"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          )}
         </div>
 
         {/* Search */}

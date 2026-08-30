@@ -114,6 +114,17 @@ function defaultRange(): { start: string; end: string } {
   return { start: toLocal(start), end: toLocal(end) };
 }
 
+// 开局参数全量记忆（评审定稿）：连练零重填。时间范围不记（每次按当下算）。
+const SETUP_MEMO_KEY = 'retraq.trainSetup';
+
+function loadSetupMemo(): Record<string, unknown> {
+  try {
+    return JSON.parse(localStorage.getItem(SETUP_MEMO_KEY) ?? '{}') as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export default function TrainPage() {
   const { toast } = useToast();
   const { refreshDatasets } = useDataset();
@@ -148,21 +159,32 @@ export default function TrainPage() {
   } = useTrainingRun();
 
   const range0 = useMemo(() => defaultRange(), []);
-  const [mode, setMode] = useState<'manual' | 'random'>('manual');
-  const [symbol, setSymbol] = useState('BTC-USDT');
-  const [timeframe, setTimeframe] = useState<Timeframe>('15m');
+  const memo = useMemo(() => loadSetupMemo(), []);
+  const [mode, setMode] = useState<'manual' | 'random'>(memo.mode === 'random' ? 'random' : 'manual');
+  const [symbol, setSymbol] = useState(typeof memo.symbol === 'string' && memo.symbol ? memo.symbol : 'BTC-USDT');
+  const [timeframe, setTimeframe] = useState<Timeframe>(
+    TIMEFRAMES.includes(memo.timeframe as Timeframe) ? (memo.timeframe as Timeframe) : '15m',
+  );
   const [startLocal, setStartLocal] = useState(range0.start);
   const [endLocal, setEndLocal] = useState(range0.end);
-  const [barCount, setBarCount] = useState(200);
-  const [randomFromPool, setRandomFromPool] = useState(false);
-  const [contextBars, setContextBars] = useState(DEFAULT_CONTEXT_BARS);
-  const [startEquity, setStartEquity] = useState(DEFAULT_START_EQUITY);
-  const [feeRatePct, setFeeRatePct] = useState(DEFAULT_FEE_RATE * 100);
+  const [barCount, setBarCount] = useState(typeof memo.barCount === 'number' ? memo.barCount : 200);
+  const [randomFromPool, setRandomFromPool] = useState(memo.randomFromPool === true);
+  const [contextBars, setContextBars] = useState(typeof memo.contextBars === 'number' ? memo.contextBars : DEFAULT_CONTEXT_BARS);
+  const [startEquity, setStartEquity] = useState(typeof memo.startEquity === 'number' ? memo.startEquity : DEFAULT_START_EQUITY);
+  const [feeRatePct, setFeeRatePct] = useState(typeof memo.feeRatePct === 'number' ? memo.feeRatePct : DEFAULT_FEE_RATE * 100);
   const [poolText, setPoolText] = useState(() => loadTrainingPool().join('\n'));
   const [showPool, setShowPool] = useState(false);
   // §2.4 弹层范式：开局配置为 modal（「开新局」唤起），本局/下单为右侧抽屉（开局自动打开）
   const [setupOpen, setSetupOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // 开局参数持久化（评审定稿：全量记忆）
+  useEffect(() => {
+    localStorage.setItem(
+      SETUP_MEMO_KEY,
+      JSON.stringify({ mode, symbol, timeframe, barCount, randomFromPool, contextBars, startEquity, feeRatePct }),
+    );
+  }, [mode, symbol, timeframe, barCount, randomFromPool, contextBars, startEquity, feeRatePct]);
 
   const [direction, setDirection] = useState<'long' | 'short'>('long');
   const [marginFraction, setMarginFraction] = useState(DEFAULT_MARGIN_FRACTION);
@@ -174,6 +196,13 @@ export default function TrainPage() {
   const [triggerPrice, setTriggerPrice] = useState('');
   const [limitPrice, setLimitPrice] = useState('');
   const [savingRun, setSavingRun] = useState(false);
+  // 揭晓两步确认（评审定稿）：3 秒内再点才执行，超时回退
+  const [revealArm, setRevealArm] = useState(false);
+  useEffect(() => {
+    if (!revealArm) return;
+    const t = window.setTimeout(() => setRevealArm(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [revealArm]);
 
   // 交易对建议：本地已有 K 线/持仓的币种优先（不必手打 symbol）
   const [symbolHints, setSymbolHints] = useState<string[]>([]);
@@ -404,6 +433,7 @@ export default function TrainPage() {
     if (run.bars !== startedBarsRef.current) {
       startedBarsRef.current = run.bars;
       setSetupOpen(false);
+      setRevealArm(false); // 新局重置揭晓确认臂
     }
   }, [run]);
 
@@ -723,11 +753,19 @@ export default function TrainPage() {
                   </select>
                   <button
                     type="button"
-                    className="oc-btn oc-btn--sm oc-btn--secondary"
+                    className={`oc-btn oc-btn--sm ${revealArm ? 'oc-btn--primary' : 'oc-btn--secondary'}`}
                     disabled={run.locked}
-                    onClick={reveal}
+                    title="揭开全部未来 K 线，本局作废"
+                    onClick={() => {
+                      if (revealArm) {
+                        setRevealArm(false);
+                        reveal();
+                      } else {
+                        setRevealArm(true); // 两步确认：不可逆动作与删除数据集同款
+                      }
+                    }}
                   >
-                    揭晓
+                    {revealArm ? '确认揭晓？' : '揭晓'}
                   </button>
                   <button
                     type="button"

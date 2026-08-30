@@ -1156,6 +1156,8 @@
   right: 8px;
   /* 响应式：窄视口占满可用宽度而不是被 30vw 压瘪 */
   width: min(380px, calc(100vw - 24px));
+  /* 列表弹窗（z-70）保持开时详情卡仍浮在其上（连看场景，评审定稿） */
+  z-index: 75;
 }
 
 .oc-float-panel--hidden {

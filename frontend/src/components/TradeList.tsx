@@ -3,12 +3,11 @@ import { useDataset } from '../context/DatasetContext';
 import { fetchSymbolStats, fetchTrades } from '../services/api';
 import type { SymbolStats, Trade } from '../services/api';
 import { fmtDateTime, fmtMoney } from '../utils/format';
-import { Search, TrendingUp, TrendingDown, X, ChevronLeft } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, X } from 'lucide-react';
 
 interface Props {
   onSelectTrade: (trade: Trade | null) => void;
   onSymbolChange: (symbol: string) => void;
-  onHide?: () => void;
 }
 
 const ALL = '';
@@ -65,7 +64,7 @@ const TradeRow = memo(function TradeRow({
   );
 });
 
-function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
+function TradeList({ onSelectTrade, onSymbolChange }: Props) {
   const { activeDatasetId, tradesRevision } = useDataset();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [stats, setStats] = useState<SymbolStats | null>(null);
@@ -169,19 +168,7 @@ function TradeList({ onSelectTrade, onSymbolChange, onHide }: Props) {
       <header className="panel-header shrink-0 space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="oc-panel__title">交易列表</h2>
-          <div className="flex shrink-0 items-center gap-1">
-            <span className="font-mono text-[13px] tabular-nums oc-text-faint">{totalCount} 笔</span>
-            {onHide ? (
-              <button
-                type="button"
-                className="oc-icon-btn oc-icon-btn--sm oc-panel-hide"
-                aria-label="隐藏交易列表"
-                onClick={onHide}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            ) : null}
-          </div>
+          <span className="font-mono text-[13px] tabular-nums oc-text-faint">{totalCount} 笔</span>
         </div>
 
         <div className="oc-input-wrap">

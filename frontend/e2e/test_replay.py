@@ -33,6 +33,14 @@ def _open_first_trade(page):
     page.wait_for_timeout(1200)  # let the debounced save from selection settle
 
 
+def _close_overlays(page):
+    """列表弹窗选中后保持开（评审定稿）：需要操作图面的测试先 Esc 关浮卡再关弹窗。"""
+    page.keyboard.press("Escape")  # 关详情浮卡
+    page.wait_for_timeout(250)
+    page.keyboard.press("Escape")  # 关列表弹窗
+    page.wait_for_timeout(250)
+
+
 def _annotation_of(api, subject_id):
     r = api.get(f"/api/annotations/trade/{subject_id}")
     return r.json() if r.ok else None
@@ -161,6 +169,7 @@ def test_hline_drawing_persists_across_reload(browser, seed, api):
 
         goto(page, "/replay")
         _open_first_trade(page)
+        _close_overlays(page)
 
         tool = page.locator("button[title='水平线']")
         expect(tool).to_be_visible()
@@ -247,24 +256,39 @@ def test_popover_open_close_and_detail_card(browser, seed):
         page.mouse.click(200, 850)
         expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
 
-        # 选中行 → 弹窗关闭、右侧详情浮卡弹出
+        # 选中行 → 弹窗保持开（连看零摩擦）、右侧详情浮卡弹出（评审定稿）
         page.get_by_role("button", name="打开持仓列表").click()
         page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
-        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
+        expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
         card = page.locator(".oc-float-panel--right")
         expect(card).to_be_visible()
         expect(card.get_by_text("仓位详情")).to_be_visible()
 
-        # × 关闭浮卡
+        # 连看：弹窗开着直接换一行，浮卡跟随
+        rows = page.locator("[aria-label='持仓列表'] button.oc-list-item")
+        if rows.count() > 1:
+            rows.nth(1).click()
+            expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
+            expect(card.get_by_text("仓位详情")).to_be_visible()
+
+        # × 关闭浮卡（弹窗仍在）
         card.get_by_role("button", name="隐藏仓位详情").click()
         expect(page.locator(".oc-float-panel--right")).to_have_count(0)
+        expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
 
-        # Esc 关闭浮卡（重新选中后按 Esc）
+        # Esc 分层关：先弹窗（浮卡已 × 掉）
+        page.keyboard.press("Escape")
+        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
+
+        # 重新选中后 Esc 分层关：先浮卡再弹窗
         page.get_by_role("button", name="打开持仓列表").click()
         page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
         expect(page.locator(".oc-float-panel--right")).to_be_visible()
         page.keyboard.press("Escape")
         expect(page.locator(".oc-float-panel--right")).to_have_count(0)
+        expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()
@@ -328,13 +352,9 @@ def test_replay_free_time_cursor(browser, seed):
         hook_page(page)
         goto(page, "/replay")
         _open_first_trade(page)
+        _close_overlays(page)
         expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=10000)
         page.wait_for_timeout(600)
-        # 游标默认停在可见区最后一根 bar；详情面板浮层盖住右缘，先收起再拖
-        collapse = page.locator("button[aria-label='隐藏仓位详情']")
-        if collapse.is_visible():
-            collapse.click()
-            page.wait_for_timeout(400)
 
         x0 = cursor_x(page, DRAG_SURFACE)
         # K 线绘制晚于工具条出现（全套压力/上游拉数时可达数秒）：轮询等待游标绘制完成

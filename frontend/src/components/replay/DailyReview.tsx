@@ -41,8 +41,8 @@ export default function DailyReview() {
     setSaving(true);
     try {
       await upsertReview('daily', todayKey, text);
+      // 评审定稿：保存后保持开着——写长结论不怕误关，随手能改；收起走按钮/点外部
       toast(`已保存今日结论（${todayKey}）`, 'success');
-      setOpen(false);
     } catch (err) {
       toast(err instanceof Error ? err.message : '保存失败', 'error');
     } finally {

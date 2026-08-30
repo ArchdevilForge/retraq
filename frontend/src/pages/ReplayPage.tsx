@@ -56,6 +56,7 @@ export default function ReplayPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const masterTrade = useMemo(
     () => (selectedPosition ? masterPositionToTrade(selectedPosition) : null),
@@ -168,7 +169,8 @@ export default function ReplayPage() {
     const onDown = (e: MouseEvent) => {
       if (!listOpen) return;
       const t = e.target as Node;
-      if (listRef.current?.contains(t) || toolbarRef.current?.contains(t)) return;
+      // 详情浮卡（列表保持开时浮在弹窗之上）不算「外部」
+      if (listRef.current?.contains(t) || toolbarRef.current?.contains(t) || detailRef.current?.contains(t)) return;
       setListOpen(false);
     };
     window.addEventListener('keydown', onKey);
@@ -194,9 +196,8 @@ export default function ReplayPage() {
   const handleSelectTrade = useCallback((trade: Trade | null) => {
     setSelectedTrade(trade);
     if (trade?.symbol) setSymbol(trade.symbol);
-    // §2.4：选中行 → 列表收起、详情浮卡出现（反馈在图上）
+    // §2.4 + 评审定稿：选中后列表弹窗保持开（连看零摩擦），详情浮卡弹出
     if (trade) {
-      setListOpen(false);
       setDetailOpen(true);
     }
   }, []);
@@ -204,7 +205,6 @@ export default function ReplayPage() {
   const handleSelectTrader = useCallback((trader: MasterTrader) => {
     setSelectedTrader(trader);
     setSelectedPosition(null);
-    setListOpen(false);
     setDetailOpen(true);
   }, []);
 
@@ -388,9 +388,9 @@ export default function ReplayPage() {
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {source === 'mine' ? (
-                <TradeList onSelectTrade={handleSelectTrade} onSymbolChange={handleSymbolChange} onHide={() => setListOpen(false)} />
+                <TradeList onSelectTrade={handleSelectTrade} onSymbolChange={handleSymbolChange} />
               ) : (
-                <MasterList selectedTrader={selectedTrader} onSelectTrader={handleSelectTrader} onHide={() => setListOpen(false)} />
+                <MasterList selectedTrader={selectedTrader} onSelectTrader={handleSelectTrader} />
               )}
             </div>
           </div>
@@ -398,7 +398,7 @@ export default function ReplayPage() {
 
         {/* 右侧详情浮卡：选中驱动的持仓详情 / 高手画像（§2.4） */}
         {detailOpen && (source === 'masters' ? selectedTrader : selectedTrade) ? (
-          <div key="detail-card" className="oc-float-panel oc-float-panel--right">
+          <div key="detail-card" ref={detailRef} className="oc-float-panel oc-float-panel--right">
             {source === 'mine' ? (
               <PositionDetails trade={selectedTrade} onHide={() => setDetailOpen(false)} />
             ) : (
@@ -416,7 +416,7 @@ export default function ReplayPage() {
         {source === 'masters' && activeTrade && selfCompareTrades ? (
           <div
             key="compare-chip"
-            className="panel-card absolute left-1/2 top-[62px] z-20 flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-[12px]"
+            className="panel-card absolute left-1/2 top-[62px] z-[76] flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-[12px]"
             data-testid="self-compare-chip"
           >
             <span className="oc-text-faint">同期我的持仓</span>
