@@ -17,8 +17,8 @@
 | D§2.2 | 数据源切换器（我的 ↔ 高手 ↔ sim）+ 同步入口 | `test_datasets.py:54`（三 owner 分组）；`test_datasets.py:82`（同步按钮 + mock） | ✅ |
 | D§2.3 | 回放控制条：播放/暂停/单步/倍速 | `test_train.py:357`（单步、自动播放、4× 倍速） | ✅ |
 | D§2.3 | 快捷键 Shift+↓ 播放、Shift+→ 单步 | `test_train.py:363`（键盘断言步进与播放/暂停切换） | ✅ |
-| D§2.3 | 会话可恢复 / 复盘模式自由时间游标 | 落库恢复 `test_train.py:157`；自由游标 `test_replay.py:301`（常驻可见 + 拖动位移断言） | ✅ |
-| D§2.4 | 弹层范式：列表=工具条按钮+左浮层（点外关、选中自动收）；详情=选中驱动右浮卡（×/Esc） | `test_replay.py:218`（开合/点外/Esc 全链路） | ✅ |
+| D§2.3 | 会话可恢复 / 复盘模式自由时间游标；游标持续可见（换标的/选持仓/慢网换数据后不得隐形） | 落库恢复 `test_train.py:157`；自由游标 `test_replay.py:301`（常驻可见 + 拖动位移断言 + 轮询容忍慢绘制） | ✅ |
+| D§2.4 | 弹层范式：列表=工具条按钮+左浮层（点外关、选中自动收）；详情=选中驱动右浮卡（×/Esc）；入口按钮浮于背板之上随时可切换；开屏落焦搜索框 | `test_replay.py:218`（开合/点外/Esc 全链路）；`test_replay.py:358`（焦点落搜索框 + 背板上层 toggle） | ✅ |
 | D§2.5 | 顶栏仅 复盘/训练/分析 三项 | `helpers.py:144` + `test_invariants.py:45`（三页网格，含 tab 计数=3） | ✅ |
 | D§3 | 深色默认主题 | `test_invariants.py:94`（无存储时 dark + 切换持久化） | ✅ |
 | D§3 | 双模式 token 表（--background-base/weak 值） | light：`test_invariants.py:45`；dark：`test_invariants.py:75`（精确 hex #141212/#201d1d） | ✅ 双主题均精确对齐 |
@@ -30,7 +30,7 @@
 | D§6 | 画线绑定 symbol+时间区域，回看仍可见 | `test_replay.py:152`（hline 落库 + 刷新回查） | ✅ |
 | D§6 | 复盘页常驻「今日复盘」入口 | `test_replay.py:253`（无需选中持仓即可写结论，与分析页时间线同源） | ✅ |
 | D§7 | 心法卡按错误标签触发、可关闭、同一持仓只自动弹一次 | `test_replay.py:113` | ✅ |
-| D§8.1 | 异步必现 oc-spinner，绝不白屏/假死 | `test_invariants.py:155`（K 线请求挂起时 spinner 可见） | ✅ |
+| D§8.1 | 异步必现 oc-spinner，绝不白屏/假死 | `test_invariants.py:155`（K 线请求挂起时 spinner 可见）；复盘页 symbol 自挑期间同样有 spinner/error 态（ReplayPage symbolPick 分支） | ✅ |
 | D§8.2 | 错误必中文提示 + 重试按钮，且可恢复 | `test_invariants.py:174`（mock 500 → 中文文案 + 重试 → 恢复） | ✅ |
 | D§8.3 | 动作必出 Toast（导入/同步/删除/落库/复盘结论） | 导入 `test_datasets.py:28`；同步 `test_datasets.py:82`、`test_masters.py:110`；落库 `test_train.py:157`；复盘结论 `test_analysis.py:45` | ✅ |
 | D§8.4 | 可点击元素 cursor:pointer + focus 可见 | `helpers.py:168`（全量扫描）+ `test_invariants.py:132`（键盘 focus 指示器） | ✅ |
@@ -49,6 +49,7 @@
 | 条款 | 约束（摘要） | 测试锚点（文件:行） | 状态 |
 | --- | --- | --- | --- |
 | P§三 | 复盘模式交易锚定：点持仓定位时间段 | `test_replay.py:194`（工具条切到 ETH-USDT） | ✅ |
+| P§三 | 复盘引擎无差别加载数据集：切数据集后自动挑该集 top 币种，不留误导空态 | `test_replay.py:385`（ETH→BTC 切换断言） | ✅ |
 | P§三 | 训练模式未来隐藏、实时决策 | `test_train.py:157`（标记价与窗口 bar 对齐后才可下单） | ✅ |
 | P§三 | owner：self / master:{id} / sim；分析默认 self | `test_datasets.py:54`；`test_analysis.py:89` | ✅ |
 | P§三 | 三层记录模型：上下文层（setup/错误/评分/笔记）零摩擦 | `test_replay.py:42`、`test_replay.py:82`（输入 → 自动落库） | ✅ |
@@ -65,7 +66,7 @@
 | P§六 | 反向开仓 / 部分平仓 / 加仓 | `test_train.py:157`（第 2–5 步逐一断言） | ✅ |
 | P§六 | cross-margin 强平结算 | `test_train.py:274`（TRUMP 波动窗 + 20× 全仓 → 爆仓收场） | ✅ |
 | P§六 | 开局面板（资金/费率/杠杆/保证金模式） | `test_train.py:274`（杠杆 20×、100% 仓输入） | ✅ |
-| P§六 | 结果落库 → sim 数据集 → 可复盘/进分析 | `test_train.py:157`（第 9–10 步：落库 Toast + API 断言 + 切换器「训练」组可见） | ✅ |
+| P§六 | 结果落库 → sim 数据集 → 可复盘/进分析；同分钟多局不丢失 | `test_train.py:157`（落库 Toast + API 断言）；后端 `test_training_save.py:48`（同名自动加 #2/#3 序号） | ✅ |
 | P§六 | K 线与复盘同源 | `test_train.py:157`（UI 标记价 == /api/klines 收盘价，逐 bar 对齐断言） | ✅ |
 | P§七 | 报告集固定六类，全 tab 可加载，图表化拉满（权益曲线/横条图） | `test_analysis.py:20`（六 tab + 权益曲线 canvas + 种子数据核对）；`test_analysis.py:89`（视角切换） | ✅ |
 | P§七 | 「模拟 vs 实盘」对比开关 | `test_analysis.py:89`（默认关，开启后 include_sim 请求） | ✅ |

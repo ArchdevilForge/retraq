@@ -258,51 +258,32 @@ export default function MasterDetailPanel({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex shrink-0 border-b border-[var(--oc-border)] bg-[var(--oc-surface-1)] px-4">
+      {/* Tabs — oc-tabs 段选控件，与复盘列表弹窗一致（docs/DESIGN.md §5） */}
+      <div className="oc-tabs oc-tabs--fill oc-tabs--compact shrink-0 border-b-0">
         <button
           type="button"
-          className={`border-b-2 py-2 px-3 text-[12px] font-medium transition-colors ${
-            activeTab === 'positions'
-              ? 'border-[var(--oc-accent)] text-[var(--oc-accent)] font-semibold'
-              : 'border-transparent text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-          }`}
+          className={`oc-tab flex-1${activeTab === 'positions' ? ' oc-tab--active' : ''}`}
           onClick={() => setActiveTab('positions')}
         >
-          合约交割单 ({totalPositions})
+          交割单 {totalPositions}
         </button>
-
         <button
           type="button"
-          className={`border-b-2 py-2 px-3 text-[12px] font-medium transition-colors ${
-            activeTab === 'equity'
-              ? 'border-[var(--oc-accent)] text-[var(--oc-accent)] font-semibold'
-              : 'border-transparent text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-          }`}
+          className={`oc-tab flex-1${activeTab === 'equity' ? ' oc-tab--active' : ''}`}
           onClick={() => setActiveTab('equity')}
         >
-          净值走势
+          净值
         </button>
-
         <button
           type="button"
-          className={`border-b-2 py-2 px-3 text-[12px] font-medium transition-colors ${
-            activeTab === 'wisdom'
-              ? 'border-[var(--oc-accent)] text-[var(--oc-accent)] font-semibold'
-              : 'border-transparent text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-          }`}
+          className={`oc-tab flex-1${activeTab === 'wisdom' ? ' oc-tab--active' : ''}`}
           onClick={() => setActiveTab('wisdom')}
         >
-          实战心法
+          心法
         </button>
-
         <button
           type="button"
-          className={`border-b-2 py-2 px-3 text-[12px] font-medium transition-colors ${
-            activeTab === 'notes'
-              ? 'border-[var(--oc-accent)] text-[var(--oc-accent)] font-semibold'
-              : 'border-transparent text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-          }`}
+          className={`oc-tab flex-1${activeTab === 'notes' ? ' oc-tab--active' : ''}`}
           onClick={() => setActiveTab('notes')}
         >
           笔记
@@ -315,10 +296,10 @@ export default function MasterDetailPanel({
         {activeTab === 'positions' && (
           <div className="flex h-full flex-col">
             {/* Filter Sub-bar */}
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--oc-border)] p-2.5 bg-[var(--oc-surface-0)]">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-weak-base)] p-2.5 bg-[var(--background-weak)]">
               <input
                 type="text"
-                className="oc-input text-[11px] py-1 px-2 max-w-[140px]"
+                className="oc-input max-w-[140px] text-[12px]"
                 placeholder="过滤标的 (如 ETH)…"
                 value={symbolSearch}
                 onChange={(e) => {
@@ -329,7 +310,7 @@ export default function MasterDetailPanel({
 
               <div className="flex items-center gap-1.5">
                 <select
-                  className="oc-select text-[11px] py-0.5 px-1.5"
+                  className="oc-select text-[12px]"
                   value={`${posSortBy}_${posSortOrder}`}
                   onChange={(e) => {
                     const [by, order] = e.target.value.split('_');
@@ -346,14 +327,10 @@ export default function MasterDetailPanel({
                   <option value="pnl_asc">盈亏额 (低→高)</option>
                 </select>
 
-                <div className="flex items-center gap-0.5">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      sideFilter === ''
-                        ? 'bg-[var(--oc-surface-2)] text-[var(--oc-text-base)]'
-                        : 'text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-                    }`}
+                    className={`oc-chip${sideFilter === '' ? ' oc-chip--active' : ''}`}
                     onClick={() => {
                       setSideFilter('');
                       setPosPage(1);
@@ -363,11 +340,7 @@ export default function MasterDetailPanel({
                   </button>
                   <button
                     type="button"
-                    className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      sideFilter === 'LONG'
-                        ? 'bg-[var(--oc-surface-2)] oc-text-profit font-semibold'
-                        : 'text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-                    }`}
+                    className={`oc-chip oc-text-profit${sideFilter === 'LONG' ? ' oc-chip--active' : ''}`}
                     onClick={() => {
                       setSideFilter('LONG');
                       setPosPage(1);
@@ -377,11 +350,7 @@ export default function MasterDetailPanel({
                   </button>
                   <button
                     type="button"
-                    className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      sideFilter === 'SHORT'
-                        ? 'bg-[var(--oc-surface-2)] oc-text-loss font-semibold'
-                        : 'text-[var(--oc-text-muted)] hover:text-[var(--oc-text-base)]'
-                    }`}
+                    className={`oc-chip oc-text-loss${sideFilter === 'SHORT' ? ' oc-chip--active' : ''}`}
                     onClick={() => {
                       setSideFilter('SHORT');
                       setPosPage(1);
@@ -496,7 +465,7 @@ export default function MasterDetailPanel({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="oc-btn oc-btn--sm oc-btn--secondary py-0.5 px-2"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
                     disabled={posPage <= 1 || posLoading}
                     onClick={() => setPosPage((p) => Math.max(1, p - 1))}
                   >
@@ -504,7 +473,7 @@ export default function MasterDetailPanel({
                   </button>
                   <button
                     type="button"
-                    className="oc-btn oc-btn--sm oc-btn--secondary py-0.5 px-2"
+                    className="oc-btn oc-btn--sm oc-btn--secondary"
                     disabled={posPage >= posPages || posLoading}
                     onClick={() => setPosPage((p) => Math.min(posPages, p + 1))}
                   >

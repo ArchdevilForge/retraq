@@ -92,7 +92,7 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         _filter_seeded(page)
 
         page.locator(f"{PANEL} button.oc-list-item", has_text="E2E甲").click()
-        slips = page.get_by_role("button", name=re.compile("合约交割单"))
+        slips = page.get_by_role("button", name=re.compile(r"^交割单"))
         expect(slips).to_be_visible(timeout=10000)
         slips.click()
 
@@ -113,9 +113,9 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         expect(chip.get_by_role("button", name="显示对照")).to_be_visible()
 
         # 战绩画像 tabs: 净值走势 / 实战心法（§五 画像复用同一详情面板）
-        page.get_by_role("button", name="净值走势").click()
+        page.get_by_role("button", name="净值").click()
         expect(page.get_by_text("7日收益曲线走势")).to_be_visible(timeout=10000)
-        page.get_by_role("button", name="实战心法").click()
+        page.get_by_role("button", name="心法").click()
         panel = page.locator(".oc-float-panel--right")
         expect(
             panel.get_by_text("加载合约心法中…").or_(panel.locator("div.rounded-lg")).first

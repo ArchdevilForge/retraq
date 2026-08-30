@@ -48,7 +48,7 @@ def test_full_journey_console_and_network(browser, seed):
         row = page.locator("[aria-label='高手列表'] button.oc-list-item", has_text="E2E甲")
         expect(row).to_be_visible(timeout=10000)
         row.click()
-        expect(page.get_by_role("button", name=re.compile("合约交割单"))).to_be_visible(timeout=10000)
+        expect(page.get_by_role("button", name=re.compile(r"^交割单"))).to_be_visible(timeout=10000)
 
         # train: boot a run and step twice
         goto(page, "/train")

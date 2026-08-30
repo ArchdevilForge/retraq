@@ -84,6 +84,21 @@
   --oc-profit: #30d158;
   --oc-loss: #ff3b30;
 
+  /* 高手面板历史别名 → §3 语义令牌（仅存量 MasterList/MasterDetailPanel 在用，新代码直接用语义令牌） */
+  --oc-accent: var(--text-strong);
+  --oc-bg: var(--background-base);
+  --oc-border: var(--border-weak-base);
+  --oc-surface-0: var(--background-base);
+  --oc-surface-1: var(--background-weak);
+  --oc-surface-2: var(--surface-raised-stronger-non-alpha);
+  --oc-text-base: var(--text-strong);
+  --oc-text-muted: var(--text-base);
+  --oc-text-faint: var(--text-weak);
+  --oc-pnl-up: var(--oc-profit);
+  --oc-pnl-down: var(--oc-loss);
+  --oc-surface-success: var(--surface-success-weak);
+  --oc-surface-error: var(--surface-critical-weak);
+
   /* chart (light) */
   --oc-chart-bg: #f1eeee;
   --oc-chart-fg: #201d1d;

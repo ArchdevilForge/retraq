@@ -235,7 +235,7 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
 
           <div className="flex items-center gap-1">
             <select
-              className="oc-select text-[11px] py-0.5 px-1.5"
+              className="oc-select text-[12px]"
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value as SortKey);
@@ -250,7 +250,7 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
             </select>
             <button
               type="button"
-              className="oc-btn oc-btn--sm oc-btn--secondary py-0.5 px-1.5 text-[10px]"
+              className="oc-btn oc-btn--sm oc-btn--secondary"
               onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
               title={sortOrder === 'desc' ? '当前降序 (高→低)' : '当前升序 (低→高)'}
             >
@@ -269,7 +269,7 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
         )}
 
         {error && (
-          <div className="p-4 text-center text-xs text-[var(--oc-text-loss)]">
+          <div className="p-4 text-center text-xs oc-text-loss">
             <p>{error}</p>
             <button
               type="button"
@@ -310,7 +310,7 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
           <div className="flex items-center gap-1">
             <button
               type="button"
-              className="oc-btn oc-btn--sm oc-btn--secondary py-0.5 px-2"
+              className="oc-btn oc-btn--sm oc-btn--secondary"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
@@ -318,7 +318,7 @@ export default function MasterList({ selectedTrader, onSelectTrader, onHide }: P
             </button>
             <button
               type="button"
-              className="oc-btn oc-btn--sm oc-btn--secondary py-0.5 px-2"
+              className="oc-btn oc-btn--sm oc-btn--secondary"
               disabled={page >= totalPages || loading}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
