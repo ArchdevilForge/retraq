@@ -189,10 +189,15 @@ def save_training_session(body: TrainingSave, db: Session = Depends(get_db)):
         raise HTTPException(400, "本局没有任何闭环交易，无需保存")
 
     now = pd.Timestamp.now(tz="Asia/Shanghai")
-    ds_name = f"[训练] {now.strftime('%Y-%m-%d %H:%M')} {body.symbol} {body.timeframe}"[:128]
-    existing = db.query(Dataset).filter(Dataset.name == ds_name).first()
-    if existing:
-        raise HTTPException(400, "该会话已保存过，请勿重复保存")
+    base_name = f"[训练] {now.strftime('%Y-%m-%d %H:%M')} {body.symbol} {body.timeframe}"[:120]
+    # 同一分钟内可以 legitimately 打完两局同名会话：加序号而不是拒绝，
+    # 否则第二局闭环交易直接丢失（用户只看到一个报错 toast）。
+    ds_name = base_name
+    serial = 2
+    while db.query(Dataset.id).filter(Dataset.name == ds_name).first() is not None:
+        suffix = f" #{serial}"
+        ds_name = base_name[: 128 - len(suffix)] + suffix
+        serial += 1
     ds = Dataset(name=ds_name, owner="sim")
     db.add(ds)
     db.flush()

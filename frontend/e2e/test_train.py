@@ -264,7 +264,7 @@ def test_train_full_order_flow_save_and_analysis(browser, seed, api):
         page.locator("header.oc-navbar button[aria-haspopup='listbox']").click()
         dropdown = page.locator(".oc-dropdown")
         expect(dropdown.get_by_text("训练", exact=True)).to_be_visible()
-        expect(dropdown.get_by_text(re.compile(r"\[训练\]"))).to_be_visible()
+        expect(dropdown.get_by_text(re.compile(r"\[训练\]")).first).to_be_visible()
         assert_console_clean(page._console_errors)
     finally:
         for d in api.get("/api/datasets").json()["data"]:

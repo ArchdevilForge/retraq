@@ -45,11 +45,18 @@ def test_save_rejects_empty_session(client):
     assert res.status_code == 400
 
 
-def test_save_rejects_duplicate_session_name(client, db_session):
+def test_save_disambiguates_same_minute_sessions(client, db_session):
+    """同一分钟两局同名会话：第二局加序号落库，绝不静默丢弃（PRODUCT §六 结果落库）。"""
     res = client.post("/api/train/save", json=_payload())
     assert res.status_code == 200
     res2 = client.post("/api/train/save", json=_payload())
-    assert res2.status_code == 400
+    assert res2.status_code == 200
+    assert res2.json()["dataset_id"] != res.json()["dataset_id"]
+    assert res2.json()["dataset_name"].endswith("#2")
+
+    res3 = client.post("/api/train/save", json=_payload())
+    assert res3.status_code == 200
+    assert res3.json()["dataset_name"].endswith("#3")
 
 
 def test_save_rejects_invalid_trade_fields(client):
