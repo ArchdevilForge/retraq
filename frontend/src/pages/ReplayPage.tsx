@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ListFilter, Trophy } from 'lucide-react';
 import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
@@ -122,6 +123,31 @@ export default function ReplayPage() {
 
   const retrySymbolPick = useCallback(() => setPickNonce((n) => n + 1), []);
 
+  // §七 下钻：分析页带 ?symbol=&trade= 进入时，直接选中该笔并锚定其时段
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    if (datasetsLoading || activeDatasetId == null) return;
+    const sym = searchParams.get('symbol');
+    const tradeId = Number(searchParams.get('trade'));
+    if (!sym && !(Number.isFinite(tradeId) && tradeId > 0)) return;
+    let ignore = false;
+    fetchTradesWithTotal(sym ? { symbol: sym } : undefined)
+      .then(({ trades }) => {
+        if (ignore) return;
+        const hit = tradeId > 0 ? trades.find((t) => t.id === tradeId) : undefined;
+        if (hit) handleSelectTrade(hit);
+        else if (sym) setSymbol(sym);
+      })
+      .catch(() => {
+        if (!ignore && sym) setSymbol(sym);
+      });
+    return () => {
+      ignore = true;
+    };
+    // 只在进入页面（数据集就绪）时消费一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetsLoading, activeDatasetId]);
+
   // 数据集切换：清选择与 symbol；symbol 清空后由上面的 auto-pick 立即重挑 top 币种。
   // symbol 所有权只在 ReplayPage——TradeList 不得回写空值（会与 auto-pick 竞态）。
   useEffect(() => {
@@ -204,6 +230,20 @@ export default function ReplayPage() {
     },
     [listOpen, source, clearSelections],
   );
+
+  // `/` 聚焦持仓搜索（未开则开弹窗，焦点由打开效果承接）；输入聚焦时不劫持
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
+      e.preventDefault();
+      if (!listOpen) openList('mine');
+      else listRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [listOpen, openList]);
 
   // TV 顶栏式入口按钮：ReplayPage 自有层覆盖在工具栏预留槽上（不进图表子树，零重挂载）
   const toolbarButtons = useMemo(

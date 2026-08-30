@@ -250,6 +250,24 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
     setCursorSec(last.time);
   }, [mainKlines, cursorSec, visibleRange]);
 
+  // 复盘快捷键（评审定稿最小集）：←/→ 游标退/进一根 bar；输入聚焦时不劫持
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
+      if (cursorSec == null || mainKlines.length === 0) return;
+      e.preventDefault();
+      const i = mainKlines.findIndex((k) => k.time === cursorSec);
+      const cur = i === -1 ? mainKlines.length - 1 : i;
+      const next = Math.min(mainKlines.length - 1, Math.max(0, cur + (e.key === 'ArrowRight' ? 1 : -1)));
+      setCursorSec(mainKlines[next].time);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cursorSec, mainKlines]);
+
   useEffect(() => {
     const tradeId = selectedTrade?.id;
     setTradeFills([]);

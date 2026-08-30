@@ -50,6 +50,7 @@
 | --- | --- | --- | --- |
 | P§三 | 复盘模式交易锚定：点持仓定位时间段 | `test_replay.py:194`（工具条切到 ETH-USDT） | ✅ |
 | P§三 | 复盘引擎无差别加载数据集：切数据集后自动挑该集 top 币种，不留误导空态 | `test_replay.py:385`（ETH→BTC 切换断言） | ✅ |
+| P§七 | 分析页下钻：报表行点击 → 复盘引擎锁定该交易/币种（`?symbol=&trade=`） | `test_replay.py:398`（详情卡直弹 + 工具条切 symbol） | ✅ |
 | P§三 | 训练模式未来隐藏、实时决策 | `test_train.py:157`（标记价与窗口 bar 对齐后才可下单） | ✅ |
 | P§三 | owner：self / master:{id} / sim；分析默认 self | `test_datasets.py:54`；`test_analysis.py:89` | ✅ |
 | P§三 | 三层记录模型：上下文层（setup/错误/评分/笔记）零摩擦 | `test_replay.py:42`、`test_replay.py:82`（输入 → 自动落库） | ✅ |

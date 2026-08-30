@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AnalysisInsights from '../components/AnalysisInsights';
 import EmptyDataset from '../components/EmptyDataset';
 import TagAnalysisPanel from '../components/analysis/TagAnalysisPanel';
@@ -109,9 +109,13 @@ function HourStrip({ stats }: { stats: TimeAnalysis['hourlyStats'] }) {
 
 export default function AnalysisPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const tabParam = searchParams.get('tab');
   const tab: TabId = isTabId(tabParam) ? tabParam : 'overview';
   const setTab = (next: TabId) => setSearchParams({ tab: next }, { replace: true });
+  // §七 下钻：报表行点击 → 复盘引擎锁定该交易/币种
+  const drillTrade = (t: Trade) => navigate(`/replay?symbol=${encodeURIComponent(t.symbol)}&trade=${t.id}`);
+  const drillSymbol = (symbol: string) => navigate(`/replay?symbol=${encodeURIComponent(symbol)}`);
 
   const {
     activeDatasetId,
@@ -349,6 +353,7 @@ export default function AnalysisPage() {
                   maxAbs={Math.max(Math.abs(core.best?.profit ?? 0), Math.abs(core.worst?.profit ?? 0), 1)}
                   secondary={fmtMoney(core.best?.profit)}
                   positive
+                  onClick={core.best ? () => drillTrade(core.best!) : undefined}
                 />
                 <BarRow
                   label={core.worst?.symbol ?? '—'}
@@ -356,6 +361,7 @@ export default function AnalysisPage() {
                   maxAbs={Math.max(Math.abs(core.best?.profit ?? 0), Math.abs(core.worst?.profit ?? 0), 1)}
                   secondary={fmtMoney(core.worst?.profit)}
                   positive={false}
+                  onClick={core.worst ? () => drillTrade(core.worst!) : undefined}
                 />
               </div>
             </Card>
@@ -370,6 +376,7 @@ export default function AnalysisPage() {
                     secondary={fmtMoney(s.totalPnl)}
                     positive={s.totalPnl >= 0}
                     title={`${s.trades} 笔 · 胜率 ${fmtPct(s.winRate)}`}
+                    onClick={() => drillSymbol(s.symbol)}
                   />
                 ))}
               </div>

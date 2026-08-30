@@ -272,25 +272,49 @@ export default function TrainPage() {
   }, [setupOpen]);
 
   // 回放控制条快捷键：Shift+↓ 播放/暂停，Shift+→ 单步（docs/DESIGN.md §2.3）。
+  // 下单快捷键（评审定稿）：B 市价开多 / S 市价开空 / X 全平 / C 撤挂单。
   // 输入框聚焦时不劫持按键。
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.shiftKey) return;
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowRight') return;
+    const typing = () => {
       const el = document.activeElement;
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-        return; // 输入中不劫持按键
-      }
-      e.preventDefault();
-      if (e.key === 'ArrowDown') {
+      return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (typing()) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.shiftKey && e.key === 'ArrowDown') {
+        e.preventDefault();
         setPlaying((p) => !p);
-      } else {
+        return;
+      }
+      if (e.shiftKey && e.key === 'ArrowRight') {
+        e.preventDefault();
         step();
+        return;
+      }
+      if (!run || run.locked) return;
+      const key = e.key.toLowerCase();
+      if (key === 'b' || key === 's') {
+        e.preventDefault();
+        if (!(orderMargin > 0)) {
+          toast('保证金无效', 'error');
+          return;
+        }
+        const err = open(key === 'b' ? 'long' : 'short', orderMargin, clampLeverage(leverage), parseOpt(sl), parseOpt(tp));
+        if (err) toast(err, 'error');
+      } else if (key === 'x') {
+        e.preventDefault();
+        const err = close(undefined);
+        if (err) toast(err, 'error');
+      } else if (key === 'c') {
+        e.preventDefault();
+        const err = cancelOrder();
+        if (err) toast(err, 'error');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setPlaying, step]);
+  }, [setPlaying, step, run, orderMargin, leverage, sl, tp, open, close, cancelOrder, toast]);
 
   // Sync SL/TP fields from position levels only (not on qty/entry churn like add)
   const posSl = run?.position?.stopLoss;

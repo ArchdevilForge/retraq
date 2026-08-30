@@ -438,3 +438,26 @@ def test_symbol_autopick_switches_with_dataset(browser, seed, api):
     finally:
         api.delete(f"/api/datasets/{ds2}")
         ctx.close()
+
+
+def test_drilldown_query_params_select_trade(browser, seed):
+    """§七 下钻 — 分析页 ?symbol=&trade= 进入复盘页：直接选中该笔并锚定其时段。"""
+    from conftest import hook_page
+
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        from conftest import hook_page as _hp
+
+        _hp(page)
+        trade = seed["trades"][0]
+        from urllib.parse import quote
+
+        goto(page, f"/replay?symbol={quote(trade['symbol'])}&trade={trade['id']}")
+        # 详情浮卡直接弹出 = 该笔已选中；工具条切到该 symbol
+        expect(page.locator(".oc-float-panel--right").get_by_text("仓位详情")).to_be_visible(timeout=15000)
+        toolbar_symbol = page.locator(".oc-chart-toolbar .font-mono").first
+        expect(toolbar_symbol).to_have_text(re.compile(trade["symbol"]), timeout=15000)
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()

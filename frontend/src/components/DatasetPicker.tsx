@@ -50,6 +50,13 @@ export default function DatasetPicker() {
     { key: 'sim' as const, label: '训练', items: datasets.filter((d) => d.owner === 'sim') },
   ];
 
+  // 空态引导（评审定稿）：EmptyDataset 的「导入表格」按钮经此事件唤起文件选择器
+  useEffect(() => {
+    const pick = () => fileRef.current?.click();
+    window.addEventListener('retraq:pick-import', pick);
+    return () => window.removeEventListener('retraq:pick-import', pick);
+  }, []);
+
   const updatePanelPos = () => {
     const el = triggerRef.current;
     if (!el) return;

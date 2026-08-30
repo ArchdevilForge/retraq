@@ -22,6 +22,14 @@ export default function EmptyDataset({
             <li key={step}>{step}</li>
           ))}
         </ul>
+        {/* 空态引导（评审定稿）：动作内嵌，一键唤起顶栏的导入文件选择器 */}
+        <button
+          type="button"
+          className="oc-btn oc-btn--primary"
+          onClick={() => window.dispatchEvent(new CustomEvent('retraq:pick-import'))}
+        >
+          导入表格
+        </button>
       </div>
     </div>
   );

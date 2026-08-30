@@ -211,22 +211,6 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
       </div>
 
       <div className="space-y-1.5">
-        <div className="text-[12px] oc-text-faint">情绪</div>
-        <div className="flex flex-wrap gap-1.5">
-          {(presets?.emotions ?? []).map((emo) => (
-            <button
-              key={emo}
-              type="button"
-              className={`oc-btn oc-btn--sm${value.emotion === emo ? ' oc-btn--primary' : ' oc-btn--secondary'}`}
-              onClick={() => update({ emotion: value.emotion === emo ? null : emo })}
-            >
-              {emo}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
         <div className="text-[12px] oc-text-faint">Setup 标签</div>
         {tagChips('setup_tags', presets?.setup_tags, customSetup, setCustomSetup)}
       </div>
@@ -236,28 +220,51 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
         {tagChips('error_tags', presets?.error_tags, customError, setCustomError)}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
-          计划止损
-          <input
-            type="number"
-            step="any"
-            className="oc-input-wrap tabular-nums"
-            value={value.planned_stop ?? ''}
-            onChange={(e) => update({ planned_stop: e.target.value === '' ? null : Number(e.target.value) })}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
-          计划目标
-          <input
-            type="number"
-            step="any"
-            className="oc-input-wrap tabular-nums"
-            value={value.planned_target ?? ''}
-            onChange={(e) => update({ planned_target: e.target.value === '' ? null : Number(e.target.value) })}
-          />
-        </label>
-      </div>
+      {/* 高频外露（评审定稿）：情绪与计划值低频，收进折叠，保成交明细可见 */}
+      <details className="group">
+        <summary className="cursor-pointer select-none text-[12px] oc-text-faint">
+          更多（情绪 · 计划止损/目标）
+        </summary>
+        <div className="mt-2 space-y-3">
+          <div className="space-y-1.5">
+            <div className="text-[12px] oc-text-faint">情绪</div>
+            <div className="flex flex-wrap gap-1.5">
+              {(presets?.emotions ?? []).map((emo) => (
+                <button
+                  key={emo}
+                  type="button"
+                  className={`oc-btn oc-btn--sm${value.emotion === emo ? ' oc-btn--primary' : ' oc-btn--secondary'}`}
+                  onClick={() => update({ emotion: value.emotion === emo ? null : emo })}
+                >
+                  {emo}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
+              计划止损
+              <input
+                type="number"
+                step="any"
+                className="oc-input-wrap tabular-nums"
+                value={value.planned_stop ?? ''}
+                onChange={(e) => update({ planned_stop: e.target.value === '' ? null : Number(e.target.value) })}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
+              计划目标
+              <input
+                type="number"
+                step="any"
+                className="oc-input-wrap tabular-nums"
+                value={value.planned_target ?? ''}
+                onChange={(e) => update({ planned_target: e.target.value === '' ? null : Number(e.target.value) })}
+              />
+            </label>
+          </div>
+        </div>
+      </details>
 
       <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
         笔记
