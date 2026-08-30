@@ -1234,43 +1234,6 @@
   }
 }
 
-.oc-panel-rail {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  padding: 8px 0;
-  border: none;
-  background: var(--background-weak);
-  color: var(--text-weak);
-  font-family: var(--oc-font-mono);
-  font-size: var(--oc-text-12);
-  font-weight: var(--oc-weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  cursor: pointer;
-}
-
-.oc-panel-rail:hover {
-  color: var(--text-strong);
-  background: var(--background-base);
-}
-
-.oc-panel-rail--left {
-  left: 0;
-  border-right: 2px solid var(--border-strong-base);
-}
-
-.oc-panel-rail--right {
-  right: 0;
-  border-left: 2px solid var(--border-strong-base);
-}
-
 .oc-panel-hide {
   flex-shrink: 0;
 }

@@ -262,14 +262,14 @@ def test_popover_open_close_and_detail_card(browser, seed):
         expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
         card = page.locator(".oc-float-panel--right")
         expect(card).to_be_visible()
-        expect(card.get_by_text("仓位详情")).to_be_visible()
+        expect(card.get_by_text("交易详情")).to_be_visible()
 
         # 连看：弹窗开着直接换一行，浮卡跟随
         rows = page.locator("[aria-label='持仓列表'] button.oc-list-item")
         if rows.count() > 1:
             rows.nth(1).click()
             expect(page.locator("[aria-label='持仓列表']")).to_be_visible()
-            expect(card.get_by_text("仓位详情")).to_be_visible()
+            expect(card.get_by_text("交易详情")).to_be_visible()
 
         # × 关闭浮卡（弹窗仍在）
         card.get_by_role("button", name="隐藏仓位详情").click()
@@ -475,7 +475,7 @@ def test_drilldown_query_params_select_trade(browser, seed):
 
         goto(page, f"/replay?symbol={quote(trade['symbol'])}&trade={trade['id']}")
         # 详情浮卡直接弹出 = 该笔已选中；工具条切到该 symbol
-        expect(page.locator(".oc-float-panel--right").get_by_text("仓位详情")).to_be_visible(timeout=15000)
+        expect(page.locator(".oc-float-panel--right").get_by_text("交易详情")).to_be_visible(timeout=15000)
         toolbar_symbol = page.locator(".oc-chart-toolbar .font-mono").first
         expect(toolbar_symbol).to_have_text(re.compile(trade["symbol"]), timeout=15000)
         assert_console_clean(page._console_errors)

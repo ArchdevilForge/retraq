@@ -236,7 +236,16 @@ function TradeList({ onSelectTrade, onSymbolChange }: Props) {
             交易加载失败：{error}
           </p>
         ) : trades.length === 0 ? (
-          <p className="px-2 py-8 text-center text-[13px] oc-text-faint">该数据集暂无交易，请导入表格</p>
+          <div className="px-2 py-8 text-center">
+            <p className="text-[13px] oc-text-faint">该数据集暂无交易</p>
+            <button
+              type="button"
+              className="oc-btn oc-btn--sm oc-btn--primary mt-2"
+              onClick={() => window.dispatchEvent(new CustomEvent('retraq:pick-import'))}
+            >
+              导入表格
+            </button>
+          </div>
         ) : (
           trades.map((trade) => (
             <TradeRow

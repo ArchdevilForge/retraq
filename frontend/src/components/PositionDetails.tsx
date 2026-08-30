@@ -57,7 +57,7 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="panel-header flex shrink-0 items-center justify-between gap-2 text-[14px] font-medium">
-        <span>仓位详情</span>
+        <span>交易详情</span>
         {onHide ? (
           <button
             type="button"

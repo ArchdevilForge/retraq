@@ -251,14 +251,14 @@ export default function ReplayPage() {
       <div className="flex items-center gap-1">
         <button
           type="button"
-          title="我的持仓列表"
+          title="我的交易列表"
           aria-label="打开持仓列表"
           aria-expanded={listOpen && source === 'mine'}
           className={`oc-btn oc-btn--sm h-7 gap-1.5 px-2.5 text-[12px] ${listOpen && source === 'mine' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
           onClick={() => openList('mine')}
         >
           <ListFilter className="h-3.5 w-3.5" aria-hidden />
-          持仓
+          交易
         </button>
         <button
           type="button"
@@ -354,7 +354,7 @@ export default function ReplayPage() {
             role="dialog"
             aria-modal="true"
             aria-label={source === 'mine' ? '持仓列表' : '高手列表'}
-            className={`oc-modal flex min-h-0 w-[min(760px,94vw)] flex-col ${source === 'masters' ? 'h-[min(78vh,720px)]' : 'max-h-[min(70vh,640px)]'}`}
+            className="oc-modal flex h-[min(78vh,720px)] min-h-0 w-[min(760px,94vw)] flex-col"
           >
             <div className="oc-tabs oc-tabs--fill shrink-0 border-b-2 border-[var(--border-strong-base)]">
               <button
