@@ -5,11 +5,10 @@ Each test anchors to spec clauses; see CONSTRAINT-MATRIX.md.
 
 import re
 import time
-from datetime import datetime
 
 from playwright.sync_api import expect
 
-from conftest import new_context
+from conftest import hook_page, new_context
 from helpers import assert_console_clean, assert_zero_page_scroll, cursor_x, goto
 
 DRAG_SURFACE = "div.relative.min-h-0.flex-1 > div.absolute.inset-0"
@@ -156,6 +155,59 @@ def test_error_tag_triggers_contextual_hint_once(browser, seed, api):
         ctx.close()
 
 
+
+def test_hide_future_replay_practice(browser, seed, api):
+    """§2.3 — 藏未来回放：开启后隐藏游标之后的 K 线，←/→ 逐根推进。
+
+    原「训练模式」的 4k 行下单引擎已移除（0 产出），仅保留其核心价值：
+    隐藏未来 + 逐根回放练习，作为复盘工具条的一个开关。
+    """
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        _open_first_trade(page)
+        _close_overlays(page)  # 需要操作图表工具条：先关浮卡与列表弹窗
+
+        # 开关的 title 随状态变化（隐藏未来 ↔ 显示未来），用 aria-label 精确定位；
+        # 不能用 button[aria-pressed] 的序号 —— 回放传输的播放/磁吸按钮也带该属性。
+        toggle = page.locator(".oc-chart-toolbar button[aria-label*='未来 K 线']").first
+        expect(toggle).to_be_visible(timeout=10000)
+
+        def counter():
+            txt = page.locator(".oc-chart-toolbar").first.inner_text()
+            m = re.search(r"(\d+)/(\d+)", txt)
+            return (int(m.group(1)), int(m.group(2))) if m else None
+
+        assert counter() is None, "藏未来关闭时不应显示进度计数"
+
+        toggle.click()
+        expect(page.get_by_text(re.compile("已隐藏未来"))).to_be_visible(timeout=5000)
+        c0 = counter()
+        assert c0 is not None, "开启后应显示 shown/total 计数"
+        assert c0[0] < c0[1], f"开启时应回退游标以留出未来：{c0}"
+
+        for _ in range(5):
+            page.keyboard.press("ArrowRight")
+        page.wait_for_timeout(400)
+        c1 = counter()
+        assert c1 and c1[0] == c0[0] + 5, f"→ 未逐根推进：{c0} → {c1}"
+
+        for _ in range(3):
+            page.keyboard.press("ArrowLeft")
+        page.wait_for_timeout(400)
+        c2 = counter()
+        assert c2 and c2[0] == c1[0] - 3, f"← 未逐根回退：{c1} → {c2}"
+
+        # 关闭后恢复全量
+        toggle.click()
+        page.wait_for_timeout(400)
+        assert counter() is None, "关闭后应恢复全量视图"
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()
+
 def test_hline_drawing_persists_across_reload(browser, seed, api):
     """§6 — 画线绑定 symbol+时间区域：落库后刷新仍在，回看同一区域可见。"""
     ctx = new_context(browser, seed)
@@ -291,54 +343,6 @@ def test_popover_open_close_and_detail_card(browser, seed):
         expect(page.locator("[aria-label='持仓列表']")).to_be_hidden()
         assert_console_clean(page._console_errors)
     finally:
-        ctx.close()
-
-
-def test_daily_review_entry_on_replay(browser, seed, api):
-    """§6/§三 — 复盘页常驻「今日复盘」入口：一句话结论写全局时间线。"""
-    from conftest import hook_page
-
-    today_key = datetime.now().strftime("%Y-%m-%d")
-    backup = None
-    for r in api.get("/api/reviews", params={"cadence": "daily"}).json()["data"]:
-        if r["period_key"] == today_key:
-            backup = r["content"]
-    ctx = new_context(browser, seed)
-    page = ctx.new_page()
-    try:
-        hook_page(page)
-        goto(page, "/replay")
-        entry = page.get_by_role("button", name="打开今日复盘")
-        expect(entry).to_be_visible(timeout=15000)  # 常驻：无需选中任何持仓
-        entry.click()
-        ta = page.locator("textarea[placeholder*='一句话结论']")
-        expect(ta).to_be_visible()
-        ta.fill("e2e-今日-5c1b 守住计划")
-        page.locator("button:has-text('保存今日结论')").click()
-        expect(page.locator(".oc-toast", has_text="已保存今日结论")).to_be_visible(timeout=10000)
-
-        rows = api.get("/api/reviews", params={"cadence": "daily"}).json()["data"]
-        assert any(r["period_key"] == today_key and "e2e-今日-5c1b" in r["content"] for r in rows), \
-            "daily conclusion not on global timeline"
-
-        # 与分析页复盘 tab 同一份数据
-        page.goto("http://localhost:5173/analysis?tab=review")
-        expect(page.locator("textarea[placeholder*='一句话结论']").first).to_have_value(
-            re.compile("e2e-今日-5c1b"), timeout=10000
-        )
-    finally:
-        if backup is not None:
-            api.put("/api/reviews", data={"cadence": "daily", "period_key": today_key, "content": backup})
-        else:
-            import sqlite3
-
-            from conftest import DB_PATH
-
-            con = sqlite3.connect(DB_PATH, timeout=15)
-            con.execute("PRAGMA busy_timeout=15000")
-            con.execute("DELETE FROM review_notes WHERE cadence='daily' AND period_key=?", (today_key,))
-            con.commit()
-            con.close()
         ctx.close()
 
 
@@ -478,6 +482,144 @@ def test_drilldown_query_params_select_trade(browser, seed):
         expect(page.locator(".oc-float-panel--right").get_by_text("交易详情")).to_be_visible(timeout=15000)
         toolbar_symbol = page.locator(".oc-chart-toolbar .font-mono").first
         expect(toolbar_symbol).to_have_text(re.compile(trade["symbol"]), timeout=15000)
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()
+
+
+def test_replay_transport_playback_steps_and_speed(browser, seed):
+    """§2.3 回放传输 — 单步 / 播放 / 步进 / 倍速四件套（对标 Bar Replay）。
+
+    历史偏差：DESIGN §2.3 早已规定播放/暂停/倍速/Shift+↓，但实现只有 ←/→ 单步。
+    """
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        _open_first_trade(page)
+        _close_overlays(page)
+
+        # 藏未来以拿到 shown/total 进度计数（游标推进的可断言投影）
+        page.locator(".oc-chart-toolbar button[aria-label='隐藏未来 K 线']").first.click()
+        expect(page.locator(".oc-chart-toolbar")).to_contain_text("已隐藏未来", timeout=5000)
+
+        def shown() -> int:
+            txt = page.locator(".oc-chart-toolbar").first.inner_text()
+            m = re.search(r"(\d+)/(\d+)", txt)
+            assert m, f"缺进度计数：{txt}"
+            return int(m.group(1))
+
+        c0 = shown()
+
+        # 单步：按钮与 ←/→ 走同一入口
+        page.locator(".oc-chart-toolbar button[aria-label='游标前进']").first.click()
+        page.wait_for_timeout(250)
+        assert shown() == c0 + 1, "「下一根」按钮未推进游标"
+        page.locator(".oc-chart-toolbar button[aria-label='游标后退']").first.click()
+        page.wait_for_timeout(250)
+        assert shown() == c0, "「上一根」按钮未回退游标"
+
+        # 步进：一次跨 5 根
+        page.locator(".oc-chart-toolbar select[aria-label='单步步进']").select_option("5")
+        page.wait_for_timeout(200)
+        page.locator(".oc-chart-toolbar button[aria-label='游标前进']").first.click()
+        page.wait_for_timeout(300)
+        assert shown() == c0 + 5, f"步进 5 未跨 5 根：{c0} → {shown()}"
+
+        # 自动播放：20 根/秒跑 1.2s 应明显前进；到末根须自动停（按钮回到「开始回放」）
+        page.locator(".oc-chart-toolbar select[aria-label='播放速度']").select_option("20")
+        page.wait_for_timeout(200)
+        page.locator(".oc-chart-toolbar button[aria-label='开始回放']").first.click()
+        expect(page.locator(".oc-chart-toolbar button[aria-label='暂停回放']")).to_be_visible(timeout=3000)
+        page.wait_for_timeout(1200)
+        cplay = shown()
+        assert cplay > c0 + 5, f"自动播放未推进：{c0} → {cplay}"
+
+        # Shift+↓ 暂停（§2.3 规定的快捷键）
+        page.keyboard.press("Shift+ArrowDown")
+        page.wait_for_timeout(400)
+        expect(page.locator(".oc-chart-toolbar button[aria-label='开始回放']")).to_be_visible(timeout=3000)
+        paused = shown()
+        page.wait_for_timeout(700)
+        assert shown() == paused, f"暂停后仍在推进：{paused} → {shown()}"
+
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()
+
+
+def test_jump_to_trade_entry_restores_cursor(browser, seed):
+    """§七 下钻 — 详情卡「前往开仓时间」把游标拉回该笔开仓 bar（对标工具核心便利点）。
+
+    同时覆盖：选中持仓时游标默认落开仓位（而非可见窗末尾）。
+    """
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        page.locator(".oc-chart-toolbar button[aria-label='隐藏未来 K 线']").first.click()
+        expect(page.locator(".oc-chart-toolbar")).to_contain_text("已隐藏未来", timeout=5000)
+
+        def shown() -> int:
+            txt = page.locator(".oc-chart-toolbar").first.inner_text()
+            m = re.search(r"(\d+)/(\d+)", txt)
+            assert m, f"缺进度计数：{txt}"
+            return int(m.group(1))
+
+        before = shown()
+        _open_first_trade(page)  # 选中后游标应跳到该笔开仓 bar
+
+        def jump_btn():
+            return page.locator("button[aria-label='前往开仓时间']").first
+
+        expect(jump_btn()).to_be_visible(timeout=10000)
+        # 选中后游标位置 = 开仓位（数据不同，只断言「不是选前的位置」+ 跳转可复现）
+        at_entry = shown()
+        assert at_entry != before, "选中持仓后游标应跳到该笔开仓 bar"
+
+        # 挪开游标
+        for _ in range(10):
+            page.locator(".oc-chart-toolbar button[aria-label='游标前进']").first.click(force=True)
+        page.wait_for_timeout(400)
+        moved = shown()
+        assert moved != at_entry, "测试前置失败：游标未挪开"
+
+        jump_btn().click(force=True)
+        page.wait_for_timeout(600)
+        assert shown() == at_entry, f"「前往开仓时间」未复位：{moved} → {shown()}（期望 {at_entry}）"
+
+        assert_console_clean(page._console_errors)
+    finally:
+        ctx.close()
+
+
+def test_ohlc_legend_follows_crosshair(browser, seed):
+    """§七 图表化 — 工具条常驻 OHLC 图例：无光标显示末根，光标移动跟随该根。"""
+    ctx = new_context(browser, seed)
+    page = ctx.new_page()
+    try:
+        hook_page(page)
+        goto(page, "/replay")
+        legend = page.locator("[data-testid='ohlc-legend']")
+        expect(legend).to_be_visible(timeout=15000)
+
+        # 无光标：显示最新一根（换标的/周期后也应有值）
+        page.wait_for_timeout(1200)
+        latest = legend.inner_text()
+        assert re.search(r"开 \S+ 高 \S+ 低 \S+ 收 \S+ 涨跌 [+-]?\d+\.\d+% 振幅 \d+\.\d+%", latest), \
+            f"图例格式异常：{latest}"
+
+        # 有光标：跟随到该根（与最新根不同即证明订阅生效）
+        box = page.locator(".oc-chart-shell").bounding_box()
+        assert box
+        page.mouse.move(box["x"] + box["width"] * 0.3, box["y"] + box["height"] * 0.5)
+        page.wait_for_timeout(900)
+        hovered = legend.inner_text()
+        assert re.search(r"开 \S+ 高 \S+", hovered), f"光标态图例为空：{hovered}"
+        assert hovered != latest, "图例未跟随光标（仍显示最新根）"
+
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()

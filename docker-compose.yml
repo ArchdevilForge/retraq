@@ -5,6 +5,9 @@ services:
       - "8080:8080"
     volumes:
       - retraq-data:/data
+    environment:
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
     restart: unless-stopped
 
 volumes:

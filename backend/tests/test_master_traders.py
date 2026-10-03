@@ -1,5 +1,8 @@
 """Tests for Master Traders and Futures Positions API."""
 
+import json
+import urllib.request
+
 from models import MasterTrader, MasterPosition, Dataset
 
 
@@ -126,16 +129,73 @@ def test_master_positions(client, db_session):
     assert rois[0] >= rois[1]
 
 
-def test_master_sync_endpoint(client, db_session):
+def test_master_sync_endpoint(client, db_session, monkeypatch):
     _seed_sample_masters(db_session)
 
     res_404 = client.post("/api/masters/non_existent/sync")
     assert res_404.status_code == 404
 
-    # Note: real Binance sync will fail gracefully on network or dummy id and return success with 0 new
+    class FakeResponse:
+        def __init__(self, body):
+            self.body = json.dumps(body).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return self.body
+
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(req)
+        if "detail?" in req.full_url:
+            return FakeResponse({"code": "000000", "data": {"nickname": "TrendMaster live"}})
+        payload = json.loads(req.data)
+        page = payload["pageNumber"]
+        item = {
+            "id": page,
+            "positionId": f"new_{page}",
+            "symbol": "4USDT" if page == 1 else "BTCUSDT",
+            "side": "Long",
+            "opened": 1800000000000 + page,
+            "closed": 1800000001000 + page,
+            "avgCost": 60000,
+            "avgClosePrice": 60100,
+            "closingPnl": 1,
+            "maxOpenInterest": 1,
+            "closedVolume": 1,
+            "leverage": "5",
+            "roi": "0.01",
+            "status": "All Closed",
+        }
+        # total > page size forces the implementation to request page 2.
+        return FakeResponse({"code": "000000", "data": {"total": 101, "list": [item]}})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     res = client.post("/api/masters/trader_001/sync")
     assert res.status_code == 200
     assert res.json()["success"] is True
+    assert res.json()["new_count"] == 2
+    assert res.json()["total_positions"] == 4
+    assert len(calls) == 3  # detail + two history pages
+    assert json.loads(calls[1].data)["pageSize"] == 100
+    assert db_session.query(MasterPosition).filter(MasterPosition.position_id.like("new_%")).count() == 2
+
+
+def test_master_sync_failure_is_not_reported_as_success(client, db_session, monkeypatch):
+    _seed_sample_masters(db_session)
+
+    def fail_urlopen(req, timeout):
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
+    res = client.post("/api/masters/trader_001/sync")
+    assert res.status_code == 502
+    assert "币安高手数据同步失败" in res.json()["detail"]
 
 
 def test_master_overlay(client, db_session):

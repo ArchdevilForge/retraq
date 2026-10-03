@@ -1,6 +1,6 @@
 """Tests for cross-dataset analysis reports and review notes (docs/PRODUCT.md §三/§七)."""
 
-from models import Dataset, ReviewNote, Trade, TradeAnnotation
+from models import Dataset, Trade, TradeAnnotation
 
 
 def _make_world(db_session):
@@ -107,33 +107,3 @@ def test_discipline_rate(client, db_session):
     assert self_block["unannotated"] == 0
 
 
-def test_checklists_shape(client):
-    res = client.get("/api/analysis/checklists")
-    assert res.status_code == 200
-    data = res.json()["data"]
-    cadences = {row["cadence"] for row in data}
-    assert cadences == {"daily", "weekly", "monthly"}
-    for row in data:
-        assert row["questions"]
-
-
-def test_review_upsert_and_list(client, db_session):
-    payload = {"cadence": "daily", "period_key": "2026-08-29", "content": "今天没追高，保持。"}
-    res = client.put("/api/reviews", json=payload)
-    assert res.status_code == 200
-    first = res.json()
-
-    # upsert same period → replace, not duplicate
-    res2 = client.put("/api/reviews", json={**payload, "content": "改成：明天少做多看。"})
-    assert res2.status_code == 200
-    assert db_session.query(ReviewNote).count() == 1
-    assert res2.json()["content"] == "改成：明天少做多看。"
-
-    res_list = client.get("/api/reviews", params={"cadence": "daily"})
-    assert res_list.status_code == 200
-    rows = res_list.json()["data"]
-    assert len(rows) == 1
-    assert rows[0]["id"] == first["id"]
-
-    res_bad = client.put("/api/reviews", json={"cadence": "hourly", "period_key": "x", "content": "y"})
-    assert res_bad.status_code == 400

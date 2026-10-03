@@ -51,12 +51,6 @@ TEMPLATE_SPECS: dict[str, dict] = {
     "binance_futures": {"columns": COLUMN_MAP_BINANCE_FUTURES, "header": 9},
 }
 
-TEMPLATE_LABELS = {
-    "langge": "交割单表格（xlsx/csv）",
-    "binance_futures_trades": "币安 U 本位合约交易历史（推荐）",
-    "binance_futures": "币安 U 本位合约仓位历史",
-}
-
 TEMPLATES = {k: v["columns"] for k, v in TEMPLATE_SPECS.items()}
 
 
@@ -230,6 +224,8 @@ class TradeImporter:
                 if entry_time is None:
                     failed += 1
                     continue
+                profit = float(row["profit"]) if pd.notna(row.get("profit")) else None
+                margin = float(row["margin"]) if pd.notna(row.get("margin")) else None
                 trade = Trade(
                     dataset_id=dataset_id,
                     symbol=normalized_symbol,
@@ -237,9 +233,9 @@ class TradeImporter:
                     leverage=float(row.get("leverage", 1)) if pd.notna(row.get("leverage")) else 1,
                     entry_price=entry_price,
                     exit_price=float(row["exit_price"]) if pd.notna(row.get("exit_price")) else None,
-                    profit=float(row["profit"]) if pd.notna(row.get("profit")) else None,
-                    profit_rate=self._parse_rate(row.get("profit_rate")),
-                    margin=float(row["margin"]) if pd.notna(row.get("margin")) else None,
+                    profit=profit,
+                    profit_rate=self._resolve_rate(row.get("profit_rate"), profit, margin),
+                    margin=margin,
                     entry_time=entry_time,
                     exit_time=self._parse_timestamp(row.get("exit_time")),
                 )
@@ -292,6 +288,29 @@ class TradeImporter:
         if "空" in d or "short" in d or "卖" in d:
             return "short"
         raise ValueError(f"无法识别的方向：{direction}")
+
+    def _resolve_rate(
+        self, raw_rate, profit: float | None, margin: float | None
+    ) -> float | None:
+        """Normalize 收益率 to the ratio contract, letting 收益/保证金 settle the unit.
+
+        Exporters disagree on this column: samples/bit-langge-delivery-example.xlsx writes
+        0.2264 for +22.64% (a ratio), while a live 交割单 writes 216.48 for +216.48% (a
+        percent). Both satisfy 收益 = 保证金 x ratio, so the identity decides: keep the
+        sheet's own number when it already is the ratio, scale it when it is a percent, and
+        when fees/funding leave it ambiguous keep the reported number rather than invent one.
+        """
+        rate = self._parse_rate(raw_rate)
+        if rate is None or profit is None or not margin:
+            return rate
+        ratio = profit / margin
+        tolerance = abs(ratio) * 0.01 + 1e-9
+        if abs(rate - ratio) <= tolerance:
+            return rate
+        if abs(rate / 100 - ratio) <= tolerance:
+            return rate / 100
+        # Ambiguous (fees/funding skew the identity): keep what the platform reported.
+        return rate
 
     def _parse_rate(self, rate) -> float | None:
         """收益率 is a decimal ratio of return-on-margin (0.2264 = +22.64%)."""

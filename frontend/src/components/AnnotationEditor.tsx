@@ -169,7 +169,8 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
         );
       })}
       <input
-        className="oc-input-wrap w-24 px-2 py-0.5 text-[12px]"
+        className="oc-input-wrap w-24 px-2 py-0.5 text-oc-12"
+            aria-label="自定义标签"
         placeholder="+ 自定义"
         value={custom}
         onChange={(e) => setCustom(e.target.value)}
@@ -188,14 +189,14 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
       <div className="panel-card-title flex items-center justify-between">
         <span>复盘标注</span>
         {saving ? (
-          <span className="flex items-center gap-1 text-[11px] oc-text-faint">
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> 保存中
+          <span className="flex items-center gap-1 text-oc-11 oc-text-faint">
+            <Loader2 className="h-icon-inline w-icon-inline animate-spin" aria-hidden /> 保存中
           </span>
         ) : null}
       </div>
 
       <div className="space-y-1.5">
-        <div className="text-[12px] oc-text-faint">评分</div>
+        <div className="text-oc-12 oc-text-faint">评分</div>
         <div className="flex gap-1.5">
           {(presets?.grades ?? ['A+', 'A', 'B', 'C']).map((g) => (
             <button
@@ -211,23 +212,23 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
       </div>
 
       <div className="space-y-1.5">
-        <div className="text-[12px] oc-text-faint">Setup 标签</div>
+        <div className="text-oc-12 oc-text-faint">Setup 标签</div>
         {tagChips('setup_tags', presets?.setup_tags, customSetup, setCustomSetup)}
       </div>
 
       <div className="space-y-1.5">
-        <div className="text-[12px] oc-text-faint">错误分类</div>
+        <div className="text-oc-12 oc-text-faint">错误分类</div>
         {tagChips('error_tags', presets?.error_tags, customError, setCustomError)}
       </div>
 
       {/* 高频外露（评审定稿）：情绪与计划值低频，收进折叠，保成交明细可见 */}
       <details className="group">
-        <summary className="cursor-pointer select-none text-[12px] oc-text-faint">
+        <summary className="cursor-pointer select-none text-oc-12 oc-text-faint">
           更多（情绪 · 计划止损/目标）
         </summary>
         <div className="mt-2 space-y-3">
           <div className="space-y-1.5">
-            <div className="text-[12px] oc-text-faint">情绪</div>
+            <div className="text-oc-12 oc-text-faint">情绪</div>
             <div className="flex flex-wrap gap-1.5">
               {(presets?.emotions ?? []).map((emo) => (
                 <button
@@ -242,7 +243,7 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
+            <label className="flex flex-col gap-1 text-oc-12 oc-text-faint">
               计划止损
               <input
                 type="number"
@@ -252,7 +253,7 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
                 onChange={(e) => update({ planned_stop: e.target.value === '' ? null : Number(e.target.value) })}
               />
             </label>
-            <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
+            <label className="flex flex-col gap-1 text-oc-12 oc-text-faint">
               计划目标
               <input
                 type="number"
@@ -266,10 +267,10 @@ export default function AnnotationEditor({ subjectType, subjectId }: Props) {
         </div>
       </details>
 
-      <label className="flex flex-col gap-1 text-[12px] oc-text-faint">
+      <label className="flex flex-col gap-1 text-oc-12 oc-text-faint">
         笔记
         <textarea
-          className="oc-input-wrap min-h-20 text-[13px]"
+          className="oc-input-wrap min-h-20 text-oc-13"
           placeholder="这笔交易做对了什么？下次改什么？"
           value={value.note ?? ''}
           onChange={(e) => update({ note: e.target.value })}

@@ -7,7 +7,23 @@ import {
   type SeriesMarker,
   type Time,
 } from 'lightweight-charts';
-import { Eraser, Maximize2, Minimize2, Minus, Percent, Ruler, Square, TrendingUp } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eraser,
+  Eye,
+  EyeOff,
+  Magnet,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Pause,
+  Percent,
+  Play,
+  Ruler,
+  Square,
+  TrendingUp,
+} from 'lucide-react';
 import type { ChartDrawing, DrawingKind, DrawingPoint, Kline, Timeframe } from '../../services/api';
 import { TIMEFRAMES } from '../../services/api';
 import { mountCandleVolumeChart } from '../../utils/candleChart';
@@ -17,8 +33,10 @@ import {
   readChartTheme,
   rulerStyleFromTheme,
 } from '../../utils/chartTheme';
-import { TIMEFRAME_MS } from '../../utils/training';
+import { TIMEFRAME_MS } from '../../services/api';
 import { fmtDateTime } from '../../utils/format';
+import { fmtPrice } from '../../utils/fills';
+import { snapPriceToOhlc } from '../../utils/chartMagnet';
 import {
   clearRulerCanvas,
   drawRulerOnCanvas,
@@ -88,6 +106,22 @@ type Props = {
   /** 复盘模式自由时间游标：有回调即可拖动，游标线常驻（docs/DESIGN.md §2.3）。 */
   cursorTime?: number | null;
   onCursorDrag?: (timeSec: number) => void;
+  /** §2.3 回放传输：单步 ±1 根（transport 按钮与 ←/→ 共用同一入口）。 */
+  onStepCursor?: (delta: 1 | -1) => void;
+  /** §2.3 自动播放开关。 */
+  playing?: boolean;
+  onTogglePlay?: () => void;
+  /** §2.3 倍速（根/秒）。 */
+  playSpeed?: number;
+  onPlaySpeedChange?: (speed: number) => void;
+  /** §2.3 步进：每次单步跨越的 bar 数。 */
+  stepBars?: number;
+  onStepBarsChange?: (bars: number) => void;
+  /** §2.3 藏未来开关：开启时隐藏游标之后的 bar（原训练回放的核心价值）。 */
+  hideFuture?: boolean;
+  onToggleHideFuture?: () => void;
+  /** 藏未来时的游标位置（shown/total），渲染为可断言的进度计数。 */
+  futureCount?: { shown: number; total: number } | null;
   /** 工具栏最右预留槽宽度（px）。宿主页面用自己的稳定按钮层覆盖它，
       避免把动态 ReactNode 塞进图表子树导致重挂载。 */
   toolbarSlotWidth?: number;
@@ -182,6 +216,16 @@ export default function ChartCanvas({
   onDragPriceLine,
   cursorTime,
   onCursorDrag,
+  onStepCursor,
+  playing = false,
+  onTogglePlay,
+  playSpeed = 8,
+  onPlaySpeedChange,
+  stepBars = 1,
+  onStepBarsChange,
+  hideFuture = false,
+  onToggleHideFuture,
+  futureCount = null,
   toolbarSlotWidth,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -214,6 +258,32 @@ export default function ChartCanvas({
   const didInitViewRef = useRef(false);
   const anchoredKlinesRef = useRef<unknown>(null);
   const pendingRangeRef = useRef<{ from: Time; to: Time } | null>(null);
+  /** 磁吸用：最近的 K 线数组（放 ref 以避免 draw effect 因数据变化重装监听）。 */
+  const klinesRef = useRef<Kline[]>(klines);
+  klinesRef.current = klines;
+  /** §2.3 磁吸开关：把落点吸附到最近 bar 的 OHLC（对标 weak/strong magnet）。 */
+  const [magnet, setMagnet] = useState(false);
+  const magnetRef = useRef(magnet);
+  magnetRef.current = magnet;
+  /** P§七 图上 OHLC 图例：crosshair 移动是高频事件，直接写 DOM 文本避免重渲染。 */
+  const legendRef = useRef<HTMLDivElement>(null);
+  /** 数据变化时刷新图例（无光标时显示最新 bar）。mount effect 只跑一次，故放 ref。 */
+  const renderLegendRef = useRef<(k?: Kline) => void>(() => {});
+
+  /** 磁吸：在容忍像素范围内取最近的 OHLC 价（时间不变，只吸价格）。 */
+  const snapToBar = useCallback((y: number, price: number, time: Time) => {
+    if (!magnetRef.current) return { price, time };
+    const series = mainApi.current?.series;
+    if (!series?.priceToCoordinate) return { price, time };
+    const bar = klinesRef.current.find((k) => k.time === Number(time)) ?? null;
+    const { price: snapped } = snapPriceToOhlc(
+      price,
+      bar,
+      (p) => series.priceToCoordinate(p) as number | null,
+      y,
+    );
+    return { price: snapped, time };
+  }, []);
   const [chartEpoch, setChartEpoch] = useState(0);
   const [chartTheme, setChartTheme] = useState(() => readChartTheme());
   const [drawMode, setDrawMode] = useState<DrawMode>('none');
@@ -473,7 +543,35 @@ export default function ChartCanvas({
         }
       }
       syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
+      // 画线/游标是自绘 overlay（独立 canvas），缩放平移不会自动跟随 —— 必须在
+      // 可视范围变化时重绘，否则画线停留在旧屏幕坐标（拖动 K 线时不跟动）。
+      paintOverlayRef.current?.();
     };
+    // §七 OHLC 图例：光标所在 bar（无光标时用最新 bar）
+    const barText = (k: Kline | undefined) => {
+      const el = legendRef.current;
+      if (!el) return;
+      if (!k) {
+        el.textContent = '';
+        return;
+      }
+      const chg = k.open !== 0 ? ((k.close - k.open) / k.open) * 100 : 0;
+      const amp = k.open !== 0 ? ((k.high - k.low) / k.open) * 100 : 0;
+      const sgn = chg >= 0 ? '+' : '';
+      el.textContent = `开 ${fmtPrice(k.open)} 高 ${fmtPrice(k.high)} 低 ${fmtPrice(k.low)} 收 ${fmtPrice(k.close)} 涨跌 ${sgn}${chg.toFixed(2)}% 振幅 ${amp.toFixed(2)}%`;
+      el.style.color = chg >= 0 ? 'var(--oc-profit)' : 'var(--oc-loss)';
+    };
+    const onCrosshair = (param: Parameters<Parameters<IChartApi['subscribeCrosshairMove']>[0]>[0]) => {
+      const t = param.time;
+      const list = klinesRef.current;
+      if (t == null) {
+        barText(list[list.length - 1]);
+        return;
+      }
+      barText(list.find((k) => k.time === Number(t)) ?? list[list.length - 1]);
+    };
+    renderLegendRef.current = barText;
+    m.chart.subscribeCrosshairMove(onCrosshair);
     m.chart.timeScale().subscribeVisibleTimeRangeChange?.(onRangeChange);
     m.chart.timeScale().subscribeVisibleLogicalRangeChange?.(onRangeChange);
 
@@ -492,6 +590,7 @@ export default function ChartCanvas({
     return () => {
       m.chart.timeScale().unsubscribeVisibleTimeRangeChange?.(onRangeChange);
       m.chart.timeScale().unsubscribeVisibleLogicalRangeChange?.(onRangeChange);
+      m.chart.unsubscribeCrosshairMove(onCrosshair);
       ro.disconnect();
       m.chart.remove();
       mainApi.current = null;
@@ -586,6 +685,8 @@ export default function ChartCanvas({
       }
     }
     prevKlineLenRef.current = len;
+    // 首次/换标的/换周期：无光标时图例显示最新 bar
+    renderLegendRef.current(klines[len - 1]);
 
     syncCompareRange(m.chart, compareApi.current?.chart ?? null, syncingRangeRef);
     if (rulerResultRef.current || rulerCornerRef.current) paintOverlay();
@@ -667,11 +768,12 @@ export default function ChartCanvas({
       if (price == null || !Number.isFinite(price)) return;
       const time = chart.timeScale().coordinateToTime(x) as Time | null;
       if (time == null) return;
+      const snapped = snapToBar(y, price, time);
 
       if (drawMode === 'hline') {
         if (onUserDrawing) {
           // Persisted: binds to symbol only; time_ms records where it was placed.
-          onUserDrawing('hline', [{ time_ms: Number(time) * 1000, price }]);
+          onUserDrawing('hline', [{ time_ms: Number(time) * 1000, price: snapped.price }]);
         } else {
           // In-memory fallback (no persistence wired, e.g. training mode)
           const line = series.createPriceLine({
@@ -691,7 +793,7 @@ export default function ChartCanvas({
       }
 
       if (drawMode === 'ruler' || TWO_POINT_HINTS[drawMode]) {
-        const corner: RulerCorner = { time, price, x, y };
+        const corner: RulerCorner = { time, price: snapped.price, x, y };
         const pending = rulerCornerRef.current;
         if (!pending) {
           rulerCornerRef.current = corner;
@@ -713,7 +815,8 @@ export default function ChartCanvas({
           ]);
           rulerCornerRef.current = null;
           rulerPreviewRef.current = null;
-          setDrawMode('none');
+          // 工具保持激活（sticky）：连续画多条不用每次重新点工具；
+          // 再点同一工具按钮或 Esc 退出（对标 TV 连续绘制习惯）
           setRulerHint('');
           paintOverlay();
         }
@@ -723,7 +826,7 @@ export default function ChartCanvas({
     };
     el.addEventListener('pointerdown', onPointerDown, { capture: true });
     return () => el.removeEventListener('pointerdown', onPointerDown, { capture: true });
-  }, [drawMode, paintOverlay, onUserDrawing]);
+  }, [drawMode, paintOverlay, onUserDrawing, snapToBar]);
 
   useEffect(() => {
     const el = mainRef.current;
@@ -740,7 +843,12 @@ export default function ChartCanvas({
       const price = series.coordinateToPrice(y) as number | null;
       const time = chart.timeScale().coordinateToTime(x) as Time | null;
       if (price == null || time == null) return;
-      rulerPreviewRef.current = { time, price, x, y };
+      const snapped = snapToBar(y, price, time);
+      // 吸附后重算 y，让预览线与最终落点重合
+      const snappedY = snapped.price === price
+        ? y
+        : ((series.priceToCoordinate(snapped.price) as number | null) ?? y);
+      rulerPreviewRef.current = { time: snapped.time, price: snapped.price, x, y: snappedY };
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => paintOverlay());
     };
@@ -749,6 +857,23 @@ export default function ChartCanvas({
       window.removeEventListener('pointermove', onPointerMove);
       cancelAnimationFrame(raf);
     };
+  }, [drawMode, paintOverlay, snapToBar]);
+
+  // Esc：取消当前画线（含未完成的第一点）并退出工具；输入聚焦时不劫持
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
+      if (drawMode === 'none' && !rulerCornerRef.current) return;
+      rulerCornerRef.current = null;
+      rulerPreviewRef.current = null;
+      setDrawMode('none');
+      setRulerHint('');
+      paintOverlay();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [drawMode, paintOverlay]);
 
   useEffect(() => {
@@ -918,7 +1043,7 @@ export default function ChartCanvas({
     <div ref={shellRef} className="flex min-h-0 flex-1 flex-col bg-[var(--background-base)]">
       <div className="oc-chart-shell flex min-h-0 flex-1 flex-col">
         <div className="oc-chart-toolbar">
-          <div className="flex min-w-0 items-center gap-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 text-oc-12">
             <span className="font-mono">{symbol || '—'}</span>
             {showTimeframeTabs ? (
               <div className="oc-tabs oc-tabs--compact shrink-0">
@@ -938,24 +1063,133 @@ export default function ChartCanvas({
             )}
             {loading ? <span className="oc-spinner" /> : null}
             {error && klines.length === 0 ? (
-              <span className="max-w-[240px] truncate text-[12px] oc-text-loss" role="alert">
+              <span className="max-w-[240px] truncate text-oc-12 oc-text-loss" role="alert">
                 {error}
               </span>
             ) : null}
             {status}
+            {hideFuture ? (
+              <span className="text-oc-12 oc-text-accent">
+                已隐藏未来
+                {futureCount ? (
+                  <span className="ml-2 font-mono tabular-nums oc-text-faint">
+                    {futureCount.shown}/{futureCount.total}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
             {drawMode === 'hline' ? (
-              <span className="text-[12px] oc-text-accent">点击主图放置水平线</span>
+              <span className="text-oc-12 oc-text-accent">点击主图放置水平线</span>
             ) : null}
             {drawMode === 'ruler' ? (
-              <span className="text-[12px] oc-text-accent">{rulerHint || '点击第一点'}</span>
+              <span className="text-oc-12 oc-text-accent">{rulerHint || '点击第一点'}</span>
             ) : null}
             {TWO_POINT_HINTS[drawMode] ? (
-              <span className="text-[12px] oc-text-accent">
+              <span className="text-oc-12 oc-text-accent">
                 {rulerCornerRef.current ? rulerHint || '移动鼠标预览，再点确定' : TWO_POINT_HINTS[drawMode]}
               </span>
             ) : null}
+            {/* §七 OHLC 图例：光标 bar 的开高低收 + 涨跌 + 振幅（常驻栏，走 DOM 直写） */}
+            <div
+              ref={legendRef}
+              data-testid="ohlc-legend"
+              className="min-w-0 truncate font-mono text-oc-12 tabular-nums"
+            />
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {onStepCursor ? (
+              <>
+                <button
+                  type="button"
+                  className="oc-icon-btn oc-icon-btn--sm"
+                  title="上一根（←）"
+                  aria-label="游标后退"
+                  onClick={() => onStepCursor(-1)}
+                >
+                  <ChevronLeft className="h-icon-tool w-icon-tool" aria-hidden />
+                </button>
+                {onTogglePlay ? (
+                  <button
+                    type="button"
+                    className={`oc-icon-btn oc-icon-btn--sm${playing ? ' oc-btn--ghost-selected' : ''}`}
+                    title={playing ? '暂停（Shift+↓）' : '自动播放（Shift+↓）'}
+                    aria-label={playing ? '暂停回放' : '开始回放'}
+                    aria-pressed={playing}
+                    onClick={onTogglePlay}
+                  >
+                    {playing ? (
+                      <Pause className="h-icon-tool w-icon-tool" aria-hidden />
+                    ) : (
+                      <Play className="h-icon-tool w-icon-tool" aria-hidden />
+                    )}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="oc-icon-btn oc-icon-btn--sm"
+                  title="下一根（→）"
+                  aria-label="游标前进"
+                  onClick={() => onStepCursor(1)}
+                >
+                  <ChevronRight className="h-icon-tool w-icon-tool" aria-hidden />
+                </button>
+                {onStepBarsChange ? (
+                  <select
+                    className="oc-select shrink-0 text-oc-12"
+                    aria-label="单步步进"
+                    title="单步跨越的 K 线根数"
+                    value={stepBars}
+                    onChange={(e) => onStepBarsChange(Number(e.target.value))}
+                  >
+                    {[1, 5, 15, 30, 60].map((n) => (
+                      <option key={n} value={n}>
+                        步进 {n} 根
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {onPlaySpeedChange ? (
+                  <select
+                    className="oc-select shrink-0 text-oc-12"
+                    aria-label="播放速度"
+                    title="自动播放速度（根/秒）"
+                    value={playSpeed}
+                    onChange={(e) => onPlaySpeedChange(Number(e.target.value))}
+                  >
+                    {[1, 2, 3, 5, 8, 10, 20].map((n) => (
+                      <option key={n} value={n}>
+                        {n} 根/秒
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </>
+            ) : null}
+            {onToggleHideFuture ? (
+              <button
+                type="button"
+                className={`oc-icon-btn oc-icon-btn--sm${hideFuture ? ' oc-btn--ghost-selected' : ''}`}
+                aria-pressed={hideFuture}
+                aria-label={hideFuture ? '显示未来 K 线' : '隐藏未来 K 线'}
+                title={hideFuture ? '显示未来 K 线（关闭回放练习）' : '隐藏未来 K 线，逐根推进练习'}
+                onClick={onToggleHideFuture}
+              >
+                {hideFuture ? (
+                  <Eye className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
+                ) : (
+                  <EyeOff className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
+                )}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={`oc-icon-btn oc-icon-btn--sm${magnet ? ' oc-btn--ghost-selected' : ''}`}
+              aria-pressed={magnet}
+              title={magnet ? '磁吸已开：落点吸附到 K 线 OHLC' : '磁吸：落点吸附到 K 线 OHLC'}
+              onClick={() => setMagnet((v) => !v)}
+            >
+              <Magnet className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
+            </button>
             <button
               type="button"
               className={`oc-icon-btn oc-icon-btn--sm${drawMode === 'ruler' ? ' oc-btn--ghost-selected' : ''}`}
@@ -970,7 +1204,7 @@ export default function ChartCanvas({
                 }
               }}
             >
-              <Ruler className="h-4 w-4" strokeWidth={2} />
+              <Ruler className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -981,7 +1215,7 @@ export default function ChartCanvas({
                 setDrawMode((mode) => (mode === 'hline' ? 'none' : 'hline'));
               }}
             >
-              <Minus className="h-4 w-4" strokeWidth={2} />
+              <Minus className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -992,7 +1226,7 @@ export default function ChartCanvas({
                 setDrawMode((mode) => (mode === 'trend' ? 'none' : 'trend'));
               }}
             >
-              <TrendingUp className="h-4 w-4" strokeWidth={2} />
+              <TrendingUp className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -1003,7 +1237,7 @@ export default function ChartCanvas({
                 setDrawMode((mode) => (mode === 'region' ? 'none' : 'region'));
               }}
             >
-              <Square className="h-4 w-4" strokeWidth={2} />
+              <Square className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -1014,7 +1248,7 @@ export default function ChartCanvas({
                 setDrawMode((mode) => (mode === 'fib' ? 'none' : 'fib'));
               }}
             >
-              <Percent className="h-4 w-4" strokeWidth={2} />
+              <Percent className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -1022,7 +1256,7 @@ export default function ChartCanvas({
               title="清除手动画线（已保存的画线将从数据中删除）"
               onClick={handleErase}
             >
-              <Eraser className="h-4 w-4" strokeWidth={2} />
+              <Eraser className="h-icon-tool w-icon-tool" strokeWidth={2} aria-hidden />
             </button>
             <button
               type="button"
@@ -1058,7 +1292,8 @@ export default function ChartCanvas({
           />
           <canvas
             ref={rulerCanvasRef}
-            className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            style={{ zIndex: 'var(--oc-z-chart)' }}
             aria-hidden
           />
         </div>
@@ -1066,7 +1301,7 @@ export default function ChartCanvas({
 
       {!compareEnabled && compareStatus ? (
         <div className="oc-chart-toolbar shrink-0">
-          <span className="flex min-w-0 items-center gap-2 text-[12px]">
+          <span className="flex min-w-0 items-center gap-2 text-oc-12">
             {compare?.loading ? <span className="oc-spinner" /> : null}
             <span
               className={compare?.error ? 'truncate oc-text-loss' : 'truncate oc-text-faint'}
@@ -1090,7 +1325,7 @@ export default function ChartCanvas({
                 对比: <span className="font-mono">{compare?.symbol}</span>
                 {compare?.loading ? <span className="oc-spinner ml-2 align-middle" /> : null}
                 {compare?.error && !showComparePane ? (
-                  <span className="ml-2 max-w-[240px] truncate text-[12px] oc-text-loss">
+                  <span className="ml-2 max-w-[240px] truncate text-oc-12 oc-text-loss">
                     {compare.error}
                   </span>
                 ) : null}
@@ -1108,11 +1343,11 @@ export default function ChartCanvas({
         </div>
       ) : null}
 
-      <dialog ref={compareModalRef} className="oc-modal w-[min(36rem,92vw)]">
+      <dialog ref={compareModalRef} aria-label="选择对比交易对" className="oc-modal w-[min(36rem,92vw)]">
         <div className="oc-modal__header">
           <div className="min-w-0">
-            <h3 className="text-[16px] font-medium leading-none">选择对比交易对</h3>
-            <div className="mt-1 truncate text-[12px] oc-text-faint">
+            <h3 className="text-oc-14 font-medium leading-none">选择对比交易对</h3>
+            <div className="mt-1 truncate text-oc-12 oc-text-faint">
               对比图与主图同步时间轴
             </div>
           </div>
@@ -1139,6 +1374,7 @@ export default function ChartCanvas({
           <div className="oc-input-wrap flex min-w-[12rem] flex-1 items-center gap-1">
             <input
               className="oc-input flex-1"
+              aria-label="自定义对比交易对"
               placeholder="自定义交易对"
               value={customSymbol}
               onChange={(e) => setCustomSymbol(e.target.value)}
@@ -1168,6 +1404,7 @@ export default function ChartCanvas({
             <input
               className="oc-input"
               type="search"
+              aria-label="搜索对比交易对"
               placeholder="搜索交易对..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

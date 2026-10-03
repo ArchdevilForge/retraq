@@ -6,6 +6,8 @@ import tempfile
 # test run never migrates or purges the developer's real backend/trading.db.
 _TMP_DB = os.path.join(tempfile.mkdtemp(prefix="retraq-tests-"), "test.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB}"
+# main.py warms ccxt markets in a background thread at import; there is no network here.
+os.environ["KLINE_WARM_MARKETS"] = "0"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -15,7 +15,6 @@ from tests.api_contract import (
     TRADE_FILL_FIELDS,
 )
 from models import Dataset, Kline, Trade, TradeFill
-from services.trade_importer import TEMPLATES
 
 SAMPLE_LANGGE = os.path.join(
     os.path.dirname(__file__), "..", "..", "samples", "bit-langge-delivery-example.xlsx"
@@ -208,21 +207,18 @@ def test_datasets_list_shape(client: TestClient, dataset):
     assert row["id"] == dataset.id
 
 
+def test_dataset_created_at_is_utc(client: TestClient, dataset):
+    """SQLite's CURRENT_TIMESTAMP is UTC; a bare ISO string would render 8h off in Asia/Shanghai."""
+    row = client.get("/api/datasets").json()["data"][0]
+    assert row["created_at"] is not None
+    assert row["created_at"].endswith("+00:00"), row["created_at"]
+
+
 def test_dataset_patch_shape(client: TestClient, dataset):
     r = client.patch(f"/api/datasets/{dataset.id}", json={"name": "renamed"})
     assert r.status_code == 200
     assert set(r.json().keys()) == DATASET_FIELDS
     assert r.json()["name"] == "renamed"
-
-
-def test_import_templates_shape(client: TestClient):
-    r = client.get("/api/import/templates")
-    assert r.status_code == 200
-    templates = r.json()["templates"]
-    assert len(templates) == len(TEMPLATES)
-    for item in templates:
-        assert set(item.keys()) == {"id", "label"}
-        assert item["id"] in TEMPLATES
 
 
 def test_klines_invalid_timeframe(client: TestClient):

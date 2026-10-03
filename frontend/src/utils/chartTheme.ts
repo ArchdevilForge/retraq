@@ -13,6 +13,9 @@ export type ChartTheme = {
   rulerStroke: string;
   rulerLabelBg: string;
   rulerLabelText: string;
+  regionFill: string;
+  regionStroke: string;
+  hlineStroke: string;
 };
 
 export type RulerDrawStyle = Pick<
@@ -20,10 +23,24 @@ export type RulerDrawStyle = Pick<
   'rulerFill' | 'rulerStroke' | 'rulerLabelBg' | 'rulerLabelText'
 >;
 
+/** §6 画线专用样式（区域/水平线），与尺子量框区分开。 */
+export type DrawingStyle = RulerDrawStyle &
+  Pick<ChartTheme, 'regionFill' | 'regionStroke' | 'hlineStroke'>;
+
 function cssVar(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
+}
+
+/**
+ * §4.1 全站等宽：canvas 2D 的 `ctx.font` **不解析 CSS 变量**。
+ * 写 `ctx.font = '11px var(--oc-font-mono)'` 会被浏览器静默回退到 sans-serif，
+ * 标签字体与全站不一致且不报错。故统一从这里取字体栈（读计算值，带兑底）。
+ */
+export function readCanvasFont(size: number): string {
+  const stack = cssVar('--oc-font-mono', 'ui-monospace, "SF Mono", Menlo, monospace');
+  return `${size}px ${stack}`;
 }
 
 export function readChartTheme(): ChartTheme {
@@ -39,6 +56,19 @@ export function readChartTheme(): ChartTheme {
     rulerStroke: cssVar('--oc-chart-ruler-stroke', 'rgba(32, 29, 29, 0.75)'),
     rulerLabelBg: cssVar('--oc-chart-ruler-label-bg', 'rgba(32, 29, 29, 0.92)'),
     rulerLabelText: cssVar('--oc-chart-ruler-label-text', '#fdfcfc'),
+    regionFill: cssVar('--oc-chart-region-fill', 'rgba(255, 255, 255, 0.12)'),
+    regionStroke: cssVar('--oc-chart-region-stroke', 'rgba(255, 255, 255, 0.55)'),
+    hlineStroke: cssVar('--oc-chart-hline-stroke', 'rgba(255, 255, 255, 0.8)'),
+  };
+}
+
+/** §6 画线样式：区域/水平线取专用令牌，其余沿用尺子风格。 */
+export function drawingStyleFromTheme(theme: ChartTheme): DrawingStyle {
+  return {
+    ...rulerStyleFromTheme(theme),
+    regionFill: theme.regionFill,
+    regionStroke: theme.regionStroke,
+    hlineStroke: theme.hlineStroke,
   };
 }
 

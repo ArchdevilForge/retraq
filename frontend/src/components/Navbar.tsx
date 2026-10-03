@@ -24,9 +24,6 @@ function Navbar() {
               <NavLink to="/replay" className={({ isActive }) => navTabClass(isActive)}>
                 复盘
               </NavLink>
-              <NavLink to="/train" className={({ isActive }) => navTabClass(isActive)}>
-                训练
-              </NavLink>
               <NavLink to="/analysis" className={({ isActive }) => navTabClass(isActive)}>
                 分析
               </NavLink>

@@ -21,6 +21,40 @@
   --color-warning: #ff9f0a;
   --color-error: #ff3b30;
   --color-info: #007aff;
+
+  /* §11 设计令牌 → Tailwind 工具类桥接：
+     radius-none/sm/pill、text-oc-12/13/14/16/20、icon-inline/action/tool、
+     space-oc-1(4px)…oc-6(32px)、control-sm/md/lg。
+     新增间距/圆角/字号先在这里登记，再在 JSX 里用工具类引用。 */
+  --radius-none: 0px;
+  --radius-sm: 4px;
+  --radius-pill: 12px;
+
+  --text-oc-9: 9px;
+  --text-oc-10: 10px;
+  --text-oc-11: 11px;
+  --text-oc-12: 12px;
+  --text-oc-13: 13px;
+  --text-oc-14: 14px;
+  --text-oc-16: 16px;
+  --text-oc-20: 20px;
+  --text-oc-display: 38px;
+
+  --spacing-oc-1: 4px;
+  --spacing-oc-2: 8px;
+  --spacing-oc-3: 12px;
+  --spacing-oc-4: 16px;
+  --spacing-oc-5: 24px;
+  --spacing-oc-6: 32px;
+
+  --spacing-icon-inline: 12px;
+  --spacing-icon-action: 14px;
+  --spacing-icon-tool: 16px;
+
+  --spacing-control-sm: 28px;
+  --spacing-control-md: 32px;
+  --spacing-control-lg: 36px;
+  --spacing-control-nav: 44px;
 }
 
 @layer base {

@@ -21,16 +21,24 @@ const VIEW_LABELS: Record<AnalysisView, string> = { self: '实盘', sim: '训练
 function ViewNote<T>({ data, view }: { data: OwnerGroup<T>; view: AnalysisView }) {
   if (view === 'self' && !data.sim && !data.master) return null;
   if (view !== 'self') {
-    return <p className="text-[12px] oc-text-faint">当前主视图：{VIEW_LABELS[view]}（{VIEW_LABELS[view]}组无数据时显示空态）。</p>;
+    return <p className="text-oc-12 oc-text-faint">当前主视图：{VIEW_LABELS[view]}（{VIEW_LABELS[view]}组无数据时显示空态）。</p>;
   }
-  return <p className="text-[12px] oc-text-faint">含对比视角：self 为主视图。</p>;
+  return <p className="text-oc-12 oc-text-faint">含对比视角：self 为主视图。</p>;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  className = '',
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="oc-card oc-card--bordered">
+    <div className={`oc-card oc-card--bordered ${className}`}>
       <h2 className="oc-card__title">{title}</h2>
-      {children}
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -38,7 +46,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SetupBlocks({ stats, view }: { stats: OwnerGroup<SetupStat[]>; view: AnalysisView }) {
   const rows = stats[view] ?? [];
   const maxAbs = Math.max(...rows.map((r) => Math.abs(r.total_profit)), 1);
-  if (rows.length === 0) return <p className="text-[13px] oc-text-faint">还没有带 setup 标签的交易——在复盘中给持仓打标签后出现。</p>;
+  if (rows.length === 0) return <p className="text-oc-13 oc-text-faint">还没有带 setup 标签的交易——在复盘中给持仓打标签后出现。</p>;
   return (
     <div className="space-y-3">
       <ViewNote data={stats} view={view} />
@@ -56,10 +64,10 @@ function SetupBlocks({ stats, view }: { stats: OwnerGroup<SetupStat[]>; view: An
             />
           ))}
       </div>
-      <div className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 text-oc-12 sm:grid-cols-3">
         {rows.map((r) => (
           <div key={r.tag} className="panel-card">
-            <div className="truncate font-mono text-[12px]" title={r.tag}>
+            <div className="truncate font-mono text-oc-12" title={r.tag}>
               {r.tag}
             </div>
             <div className="mt-1 font-mono tabular-nums">
@@ -75,7 +83,7 @@ function SetupBlocks({ stats, view }: { stats: OwnerGroup<SetupStat[]>; view: An
 function ErrorBlocks({ stats, view }: { stats: OwnerGroup<ErrorStat[]>; view: AnalysisView }) {
   const rows = stats[view] ?? [];
   const maxAbs = Math.max(...rows.map((r) => Math.abs(r.total_profit)), 1);
-  if (rows.length === 0) return <p className="text-[13px] oc-text-faint">没有错误分类记录——好事，或者还没标注。</p>;
+  if (rows.length === 0) return <p className="text-oc-13 oc-text-faint">没有错误分类记录——好事，或者还没标注。</p>;
   return (
     <div className="space-y-3">
       <ViewNote data={stats} view={view} />
@@ -113,11 +121,11 @@ function RBlocks({ dist, view }: { dist: OwnerGroup<RDistribution>; view: Analys
                 title={`${b.bucket}R · ${b.count} 笔`}
               />
             </div>
-            <span className="font-mono text-[10px] oc-text-faint">{b.bucket}</span>
+            <span className="font-mono text-oc-10 oc-text-faint">{b.bucket}</span>
           </div>
         ))}
       </div>
-      <p className="text-[12px] oc-text-faint">
+      <p className="text-oc-12 oc-text-faint">
         平均 R：{block.avg_r != null ? block.avg_r.toFixed(2) : '—'} · 未标注计划止损 {block.without_stop} 笔（不计入分布）
       </p>
     </div>
@@ -144,7 +152,7 @@ function DisciplineBlock({ stat, view }: { stat: OwnerGroup<DisciplineStat>; vie
           </div>
         </div>
       </div>
-      <p className="text-[12px] oc-text-faint">
+      <p className="text-oc-12 oc-text-faint">
         {block.annotated} 笔已标注中 {block.clean} 笔无错误分类，{block.with_error} 笔带错误标签。
       </p>
     </div>
@@ -194,8 +202,8 @@ export default function TagAnalysisPanel({ className = '' }: Props) {
   };
 
   return (
-    <div className={`flex flex-col gap-4 ${className}`}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+    <div className={`flex min-h-0 flex-1 flex-col gap-oc-2 ${className}`}>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-oc-4 gap-y-oc-2 text-oc-13">
         <div role="tablist" aria-label="分析视角" className="oc-tabs w-fit">
           {(['self', 'sim', 'master'] as const).map((v) => (
             <button
@@ -221,7 +229,7 @@ export default function TagAnalysisPanel({ className = '' }: Props) {
       </div>
 
       {error ? (
-        <p className="text-[13px] oc-text-loss" role="alert">
+        <p className="text-oc-13 oc-text-loss" role="alert">
           标签统计加载失败：{error}
         </p>
       ) : !setup || !errors || !rDist || !discipline ? (
@@ -229,20 +237,20 @@ export default function TagAnalysisPanel({ className = '' }: Props) {
           <span className="oc-spinner" aria-label="加载中…" />
         </div>
       ) : (
-        <>
-          <Section title="Setup 表现（按累计盈亏）">
+        <div className="gap-oc-2 grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
+          <Section title="Setup 表现（按累计盈亏）" className="min-h-0 overflow-hidden">
             <SetupBlocks stats={setup} view={view} />
           </Section>
-          <Section title="错误代价（按累计盈亏）">
+          <Section title="错误代价（按累计盈亏）" className="min-h-0 overflow-hidden">
             <ErrorBlocks stats={errors} view={view} />
           </Section>
-          <Section title="R 值分布（按计划止损归一）">
+          <Section title="R 值分布（按计划止损归一）" className="min-h-0 overflow-hidden">
             <RBlocks dist={rDist} view={view} />
           </Section>
-          <Section title="纪律遵守率">
+          <Section title="纪律遵守率" className="min-h-0 overflow-hidden">
             <DisciplineBlock stat={discipline} view={view} />
           </Section>
-        </>
+        </div>
       )}
     </div>
   );

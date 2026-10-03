@@ -14,7 +14,7 @@ class FakeExchange:
         self._trades = trades
         self.rateLimit = 1
 
-    def fetch_income(self, since=None, limit=None):
+    def fapiPrivateGetIncome(self, params=None):
         return self._incomes
 
     def fetch_my_trades(self, symbol, since=None, limit=None):

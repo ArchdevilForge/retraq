@@ -18,10 +18,60 @@
   --oc-weight-bold: 700;
   --oc-leading: 1.5;
   --oc-leading-tight: 1.25;
-  --oc-leading-button: 2;
+  /* §11.3：文本按钮行高固定为 1，使高度完全由 --oc-control-* 决定。
+     旧值 2 会把 13px 文字撞成 26px 内容盒，加上 2px 边框 = 30px，
+     直接压过 sm 档的 28px —— 阶梯写了等于没写。 */
+  --oc-leading-button: 1;
+
+  /* §11 圆角：0 = 硬边网格（面板/卡片/弹层/输入）；12px = 胶囊化数字徽标。
+     全站只允许这三个值，禁止裸写 px 圆角。 */
+  --oc-radius-none: 0px;
   --oc-radius-sm: 4px;
-  --oc-radius-md: 4px;
-  --oc-radius-lg: 0;
+  --oc-radius-pill: 12px;
+  /* 兼容别名：老代码写 var(--oc-radius-md/lg)，与语义档位同值 */
+  --oc-radius-md: var(--oc-radius-sm);
+  --oc-radius-lg: var(--oc-radius-none);
+
+  /* §11 间距：唯一 4px 基准（0.25rem）。间距只用 --oc-space-* 或 4 的倍数，
+     禁止任意值（如 gap-[13px]）。 */
+  --oc-space-1: 4px;
+  --oc-space-2: 8px;
+  --oc-space-3: 12px;
+  --oc-space-4: 16px;
+  --oc-space-5: 24px;
+  --oc-space-6: 32px;
+
+  /* §11 控件高度：sm=28 / md=32 / lg=36（图标按钮与文本按钮同高）。 */
+  --oc-control-sm: 28px;
+  --oc-control-md: 32px;
+  --oc-control-lg: 36px;
+  --oc-control-nav: 44px;
+
+  /* §11 边框：0 = 分隔细线；1 = 结构性分隔；2 = 硬边网格（面板/按钮/输入）。 */
+  --oc-border-hairline: 1px;
+  --oc-border-structural: 2px;
+  /* 语义强调条（如心法卡的左侧盈利标线），不是结构边框 */
+  --oc-border-accent: 4px;
+
+  /* §11 图标尺寸：唯一 3 档（inline 12 / action 14 / tool 16）。 */
+  --oc-icon-inline: 12px;
+  --oc-icon-action: 14px;
+  --oc-icon-tool: 16px;
+
+  /* §11 层级：唯一分配表（保持既有相对次序，仅命名）。新增浮层必须先在此登记，
+     禁止裸写 z-index 数值。相邻层必须取不同值 —— 同值时会退化为 DOM 顺序决定遮挡。 */
+  --oc-z-chart: 10;
+  --oc-z-canvas-float: 25;
+  --oc-z-float-panel: 30;
+  --oc-z-navbar: 40;
+  --oc-z-popover: 60;
+  --oc-z-modal: 70;
+  --oc-z-above-modal: 75;
+  --oc-z-prompt: 76;
+  --oc-z-toolbar: 80;
+  --oc-z-portal: 200;
+  --oc-z-toast: 300;
+  --oc-z-skip-link: 500;
 
   /* opencode.ai canvas + ink */
   --background-base: #fdfcfc;
@@ -116,25 +166,23 @@
   --oc-chart-ruler-stroke: rgba(32, 29, 29, 0.72);
   --oc-chart-ruler-label-bg: rgba(32, 29, 29, 0.92);
   --oc-chart-ruler-label-text: #fdfcfc;
+  /* §6 标注：区域（圈行情用）比尺子量框更需要持续可见，故单独给填充与描边 */
+  --oc-chart-region-fill: rgba(32, 29, 29, 0.12);
+  --oc-chart-region-stroke: rgba(32, 29, 29, 0.55);
+  /* 水平线（关键价位）：实线 + 更亮的描边 */
+  --oc-chart-hline-stroke: rgba(32, 29, 29, 0.8);
 }
 
 /* ---- Shell ---- */
-.oc-shell {
-  background: var(--background-base);
-  color: var(--text-strong);
-  font-family: var(--oc-font-mono);
-  font-size: var(--oc-text-14);
-  line-height: var(--oc-leading);
-}
 
 /* ---- Navbar ---- */
 .oc-skip-link {
   position: absolute;
   left: 12px;
   top: -100%;
-  z-index: 500;
+  z-index: var(--oc-z-skip-link);
   padding: 8px 12px;
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   background: var(--background-base);
   color: var(--text-strong);
   font-family: var(--oc-font-mono);
@@ -148,7 +196,7 @@
 
 .oc-navbar {
   position: relative;
-  z-index: 40;
+  z-index: var(--oc-z-navbar);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -160,7 +208,7 @@
     max(12px, env(safe-area-inset-right))
     0
     max(12px, env(safe-area-inset-left));
-  border-bottom: 2px solid var(--border-strong-base);
+  border-bottom: var(--oc-border-structural) solid var(--border-strong-base);
   background: var(--background-base);
   text-transform: uppercase;
   letter-spacing: -0.02em;
@@ -173,22 +221,6 @@
   align-items: center;
   gap: 16px;
   min-width: 0;
-}
-
-.oc-navbar__nav {
-  min-width: 0;
-}
-
-.oc-navbar__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-.oc-brand-mark {
-  display: none;
 }
 
 .oc-brand-title {
@@ -206,6 +238,18 @@
 
 .oc-brand-title:focus-visible {
   outline-offset: 3px;
+}
+
+.oc-navbar__nav {
+  min-width: 0;
+}
+
+.oc-navbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .oc-navbar .oc-tab {
@@ -244,8 +288,8 @@
   align-items: stretch;
   gap: 0;
   padding: 0;
-  border: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   background: transparent;
   box-shadow: none;
 }
@@ -255,11 +299,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 6px 14px;
+  min-height: var(--oc-control-md);
+  padding: 0 14px;
   border: none;
-  border-left: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border-left: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   background: transparent;
   color: var(--text-weak);
   font-family: var(--oc-font-mono);
@@ -288,7 +332,7 @@
 }
 
 .oc-tabs--compact .oc-tab {
-  min-height: 28px;
+  min-height: var(--oc-control-sm);
   padding: 4px 10px;
   font-size: var(--oc-text-12);
 }
@@ -297,6 +341,16 @@
 .oc-tabs--fill {
   display: flex;
   width: 100%;
+}
+
+/* §2.1：窄视口下多段选不得伸出视口。换行优于横向滚动 —— 滚动容器里的
+   子项仍会超出视口右边界（断言 helpers.assert_no_viewport_overflow 不接受）。 */
+.oc-tabs--wrap {
+  flex-wrap: wrap;
+}
+
+.oc-tabs--wrap .oc-tab {
+  flex: 1 1 auto;
 }
 
 .oc-tabs--fill .oc-tab {
@@ -310,7 +364,10 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 2px solid var(--border-strong-base);
+  /* §11.3：裸 .oc-btn（无尺寸修饰符）= md 档 32px，不再是 line-height 推导的 30px。 */
+  min-height: var(--oc-control-md);
+  padding: 0 12px;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   border-radius: var(--oc-radius-sm);
   font-family: var(--oc-font-mono);
   font-size: var(--oc-text-13);
@@ -329,19 +386,13 @@
 }
 
 .oc-btn--sm {
-  min-height: 28px;
+  min-height: var(--oc-control-sm);
   padding: 0 10px;
 }
 
 .oc-btn--md {
-  min-height: 32px;
+  min-height: var(--oc-control-md);
   padding: 0 12px;
-}
-
-.oc-btn--lg {
-  min-height: 36px;
-  padding: 0 16px;
-  font-size: var(--oc-text-14);
 }
 
 .oc-btn--primary {
@@ -395,7 +446,7 @@
   justify-content: center;
   flex-shrink: 0;
   aspect-ratio: 1;
-  border: 2px solid transparent;
+  border: var(--oc-border-structural) solid transparent;
   border-radius: var(--oc-radius-sm);
   background: transparent;
   color: var(--icon-base);
@@ -410,12 +461,14 @@
 
 .oc-icon-btn--sm {
   width: 28px;
-  height: 28px;
+  width: var(--oc-control-sm);
+  height: var(--oc-control-sm);
 }
 
 .oc-icon-btn--md {
   width: 32px;
-  height: 32px;
+  width: var(--oc-control-md);
+  height: var(--oc-control-md);
 }
 
 .oc-icon-btn--secondary {
@@ -428,10 +481,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
+  min-height: var(--oc-control-md);
   padding: 0 10px;
   border-radius: var(--oc-radius-sm);
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   background: var(--input-base);
   transition: box-shadow 120ms ease;
 }
@@ -462,7 +515,7 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: var(--background-base);
   border: none;
   box-shadow: none;
@@ -471,7 +524,7 @@
 .oc-panel__header {
   flex-shrink: 0;
   padding: 10px 12px;
-  border-bottom: 2px solid var(--border-strong-base);
+  border-bottom: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 .oc-panel__body {
@@ -492,10 +545,14 @@
 /* ---- Card ---- */
 .oc-card {
   position: relative;
+  /* §2.1 单视口：卡片是列向 flex，内容区可吃掉剩余高度 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--oc-space-2);
   padding: 10px 12px;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: transparent;
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 .oc-card::before {
@@ -503,7 +560,10 @@
 }
 
 .oc-card__title {
-  margin-bottom: 8px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  padding-bottom: var(--oc-space-2);
+  border-bottom: var(--oc-border-hairline) solid var(--border-weak-base);
   font-size: var(--oc-text-14);
   font-weight: var(--oc-weight-bold);
   color: var(--text-strong);
@@ -527,8 +587,8 @@
   gap: 8px;
   padding: 8px 10px;
   border: none;
-  border-bottom: 1px solid var(--border-weak-base);
-  border-radius: 0;
+  border-bottom: var(--oc-border-hairline) solid var(--border-weak-base);
+  border-radius: var(--oc-radius-none);
   background: transparent;
   color: var(--text-strong);
   font-size: var(--oc-text-13);
@@ -555,9 +615,10 @@
 .oc-chip {
   display: inline-flex;
   align-items: center;
+  /* §11.3 压缩档：纯展示小标签 26px */
   min-height: 26px;
   padding: 0 10px;
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   border-radius: var(--oc-radius-sm);
   background: transparent;
   color: var(--text-base);
@@ -584,8 +645,8 @@
   display: grid;
   gap: 0;
   overflow: hidden;
-  border: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   background: var(--border-strong-base);
 }
 
@@ -593,18 +654,18 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.oc-stat-grid--auto {
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+.oc-stat-grid--cols-7 {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-.oc-stat-grid--cols-4 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (min-width: 1024px) {
-  .oc-stat-grid--cols-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+@media (max-width: 1023px) {
+  .oc-stat-grid--cols-7 {
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
   }
+}
+
+.oc-stat-grid--cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .oc-stat {
@@ -632,8 +693,8 @@
 
 /* ---- Modal ---- */
 .oc-modal {
-  border: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   padding: 0;
   background: var(--background-base);
   color: var(--text-strong);
@@ -658,7 +719,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 2px solid var(--border-strong-base);
+  border-bottom: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 .oc-modal__body {
@@ -672,49 +733,16 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 14px;
-  border-top: 2px solid var(--border-strong-base);
+  border-top: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 /* ---- Table ---- */
-.oc-table-wrap {
-  overflow-x: auto;
-  border: 2px solid var(--border-strong-base);
-}
-
-.oc-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--oc-text-13);
-}
-
-.oc-table th {
-  padding: 8px 10px;
-  text-align: left;
-  font-weight: var(--oc-weight-bold);
-  color: var(--text-weak);
-  text-transform: uppercase;
-  border-bottom: 2px solid var(--border-strong-base);
-}
-
-.oc-table td {
-  padding: 8px 10px;
-  color: var(--text-base);
-  border-bottom: 1px solid var(--border-weak-base);
-}
-
-.oc-table tr:last-child td {
-  border-bottom: none;
-}
-
-.oc-table tr:hover td {
-  background: var(--surface-base-hover);
-}
 
 /* ---- Dropdown ---- */
 .oc-dropdown {
   overflow: hidden;
-  border: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   background: var(--background-base);
   box-shadow: none;
 }
@@ -726,7 +754,7 @@
   gap: 8px;
   padding: 8px 12px;
   border: none;
-  border-bottom: 1px solid var(--border-weak-base);
+  border-bottom: var(--oc-border-hairline) solid var(--border-weak-base);
   background: transparent;
   color: var(--text-base);
   font-size: var(--oc-text-13);
@@ -752,7 +780,7 @@
   position: fixed;
   top: 12px;
   right: 12px;
-  z-index: 300;
+  z-index: var(--oc-z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -762,8 +790,8 @@
 
 .oc-toast {
   padding: 10px 12px;
-  border: 2px solid var(--border-strong-base);
-  border-radius: 0;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-none);
   font-size: var(--oc-text-13);
   line-height: var(--oc-leading);
   pointer-events: auto;
@@ -796,7 +824,7 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid var(--border-weak-base);
+  border: var(--oc-border-structural) solid var(--border-weak-base);
   border-top-color: var(--text-strong);
   border-radius: 50%;
   animation: oc-spin 0.7s linear infinite;
@@ -814,18 +842,6 @@
 }
 
 /* ---- Badge ---- */
-.oc-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 6px;
-  border-radius: var(--oc-radius-sm);
-  border: 2px solid var(--border-strong-base);
-  font-size: 11px;
-  font-weight: var(--oc-weight-medium);
-  text-transform: uppercase;
-  color: var(--text-base);
-}
 
 /* ---- Semantic surfaces ---- */
 .oc-surface-success {
@@ -916,7 +932,7 @@
 
 .oc-guide-list li {
   padding: 6px 0;
-  border-bottom: 1px solid var(--border-weak-base);
+  border-bottom: var(--oc-border-hairline) solid var(--border-weak-base);
 }
 
 .oc-guide-list li:last-child {
@@ -944,13 +960,13 @@
 }
 
 .oc-page__frame {
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   background: var(--background-base);
 }
 
 .oc-insights {
   padding: 12px 14px;
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
   background: var(--background-weak);
 }
 
@@ -960,44 +976,6 @@
   font-weight: var(--oc-weight-bold);
   text-transform: uppercase;
   color: var(--text-weak);
-}
-
-.oc-pnl-hero {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  border: 2px solid var(--border-strong-base);
-  background: var(--background-weak);
-}
-
-.oc-pnl-hero__label {
-  font-size: var(--oc-text-13);
-  font-weight: var(--oc-weight-bold);
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
-.oc-pnl-hero__value {
-  font-family: var(--oc-font-mono);
-  font-size: var(--oc-text-20);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--oc-weight-medium);
-}
-
-.oc-list-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  font-size: var(--oc-text-12);
-  color: var(--text-weak);
-}
-
-.oc-list-summary span {
-  font-family: var(--oc-font-mono);
-  font-variant-numeric: tabular-nums;
 }
 
 .sr-only {
@@ -1019,7 +997,7 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: var(--oc-chart-bg);
   color: var(--oc-chart-fg);
   box-shadow: none;
@@ -1030,10 +1008,10 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap; /* 响应式：窄视口右组换行，不裁切入口按钮 */
+  flex-wrap: wrap; /* 单行模式（对比状态条等）响应式换行 */
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 2px solid var(--oc-chart-chrome-border);
+  border-bottom: var(--oc-border-structural) solid var(--oc-chart-chrome-border);
   font-size: var(--oc-text-13);
   color: var(--oc-chart-text);
   text-transform: uppercase;
@@ -1091,7 +1069,7 @@
 
 .oc-skeleton {
   animation: oc-pulse 1.5s ease-in-out infinite;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: var(--background-weak);
 }
 
@@ -1108,8 +1086,8 @@
 /* Contextual hint card (docs/DESIGN.md §7) */
 .oc-hint-card {
   padding: 10px 12px;
-  border: 2px solid var(--border-strong-base);
-  border-left: 4px solid var(--oc-profit, #30d158);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-left: var(--oc-border-accent) solid var(--oc-profit);
   background: var(--background-weak);
   color: var(--text-base);
 }
@@ -1120,12 +1098,32 @@
   min-height: 0;
   flex: 1;
   overflow: hidden;
+  /* 右侧浮层占位：由 :has() 在浮层实际打开时置为面板足迹。窄视口不占位
+     （面板改为全屏级浮层，见下方 media query）。 */
+  --oc-float-panel-inset: 0px;
+}
+
+/* §2.1/§2.4：浮层打开时图表让位，价格轴与最新行情永不被面板压住。
+   面板足迹 = width:min(380px, 100vw-24px) + 右侧 8px 外边距 + 8px 间隙。
+   ≤767px 面板占满可用宽度，图表不再让位而是整体隐藏于浮层之下（窄屏
+   弹层范式，与 ReplayPage 一致）。 */
+.oc-canvas:has(.oc-float-panel--right:not(.oc-float-panel--hidden)) {
+  --oc-float-panel-inset: calc(min(380px, 100vw - 24px) + 16px);
+}
+
+@media (max-width: 767px) {
+  .oc-canvas:has(.oc-float-panel--right:not(.oc-float-panel--hidden)) {
+    --oc-float-panel-inset: 0px;
+  }
 }
 
 /* Chart is the background layer; panels float above it. */
 .oc-canvas__chart {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: var(--oc-float-panel-inset);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1137,7 +1135,7 @@
      start below it so toolbar controls stay clickable while panels are open. */
   top: calc(54px + 8px);
   bottom: 8px;
-  z-index: 30;
+  z-index: var(--oc-z-float-panel);
   display: flex;
   min-height: 0;
   min-width: 0;
@@ -1145,11 +1143,7 @@
   overflow: hidden;
   width: min(340px, calc(100vw - 24px));
   background: var(--background-weak);
-  border: 2px solid var(--border-strong-base);
-}
-
-.oc-float-panel--left {
-  left: 8px;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 .oc-float-panel--right {
@@ -1157,85 +1151,40 @@
   /* 响应式：窄视口占满可用宽度而不是被 30vw 压瘪 */
   width: min(380px, calc(100vw - 24px));
   /* 列表弹窗（z-70）保持开时详情卡仍浮在其上（连看场景，评审定稿） */
-  z-index: 75;
-}
-
-.oc-float-panel--hidden {
-  display: none;
+  z-index: var(--oc-z-above-modal);
 }
 
 /* Floating transport/toolbar bar above the canvas (train replay controls). */
-.oc-float-toolbar {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  z-index: 25;
-  display: flex;
-  transform: translateX(-50%);
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--background-weak);
-  border: 2px solid var(--border-strong-base);
-}
 
 /* ---- Workbench grid (shared 2px borders like opencode.ai sections) ---- */
-.oc-workbench {
-  display: grid;
-  min-height: 0;
-  border: 2px solid var(--border-strong-base);
-}
-
-@media (min-width: 1024px) {
-  .oc-workbench {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(240px, 280px);
-  }
-
-  .oc-workbench[data-list-open="false"] {
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
-  }
-
-  .oc-workbench[data-detail-open="false"] {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
-  }
-
-  .oc-workbench[data-list-open="false"][data-detail-open="false"] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 1023px) {
-  .oc-workbench {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-  }
-}
-
-.oc-workbench > .panel {
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
-  background: var(--background-base);
-}
-
-.oc-workbench > .panel--collapsed {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .oc-workbench > .panel + .panel {
-    border-left: 2px solid var(--border-strong-base);
-  }
-}
-
-@media (max-width: 1023px) {
-  .oc-workbench > .panel + .panel {
-    border-top: 2px solid var(--border-strong-base);
-  }
-}
 
 .oc-panel-hide {
   flex-shrink: 0;
+}
+
+/* ---- Select（§5）----
+   原生 <select> 带自身外观，不能直接套 .oc-input（那是 transparent 的无边框内部件）。
+   本类提供与 .oc-input-wrap 同一套尺寸/圆角/边框，供裸 select 使用。 */
+.oc-select {
+  min-height: var(--oc-control-md);
+  padding: 0 10px;
+  border: var(--oc-border-structural) solid var(--border-strong-base);
+  border-radius: var(--oc-radius-sm);
+  background: var(--input-base);
+  color: var(--text-strong);
+  font-family: var(--oc-font-mono);
+  font-size: var(--oc-text-13);
+  line-height: var(--oc-leading);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.oc-select:hover:not(:disabled) {
+  background: var(--input-hover);
+}
+
+.oc-select:focus-visible {
+  box-shadow: var(--shadow-xs-border-focus);
 }
 
 /* Legacy aliases */
@@ -1252,7 +1201,7 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: var(--background-base);
   border: none;
   box-shadow: none;
@@ -1261,7 +1210,7 @@
 .panel-header {
   flex-shrink: 0;
   padding: 10px 12px;
-  border-bottom: 2px solid var(--border-strong-base);
+  border-bottom: var(--oc-border-structural) solid var(--border-strong-base);
   font-weight: var(--oc-weight-bold);
   text-transform: uppercase;
   letter-spacing: -0.02em;
@@ -1276,9 +1225,9 @@
 
 .panel-card {
   padding: 10px 12px;
-  border-radius: 0;
+  border-radius: var(--oc-radius-none);
   background: var(--background-base);
-  border: 2px solid var(--border-strong-base);
+  border: var(--oc-border-structural) solid var(--border-strong-base);
 }
 
 .panel-card-title {
@@ -1357,14 +1306,15 @@
   --surface-success-base: rgba(48, 209, 88, 0.16);
   --surface-success-weak: rgba(48, 209, 88, 0.1);
   --surface-critical-base: rgba(255, 59, 48, 0.16);
-  --surface-critical-weak: rgba(48, 209, 88, 0.1);
+  /* 亏损失败语义底色 —— 深色下必须仍是红系（历史偏差：误抄成成功绿，
+     导致做空/亏损行显示绿色背景）。 */
+  --surface-critical-weak: rgba(255, 59, 48, 0.1);
   --surface-warning-base: rgba(255, 159, 10, 0.16);
   --surface-brand-base: #fdfcfc;
 
   --input-base: #282525;
   --input-hover: #302c2c;
   --input-focus: #282525;
-
 
   --text-strong: #fdfcfc;
   --text-base: #b8b6b6;
@@ -1414,4 +1364,42 @@
   --oc-chart-ruler-stroke: rgba(253, 252, 252, 0.72);
   --oc-chart-ruler-label-bg: rgba(253, 252, 252, 0.94);
   --oc-chart-ruler-label-text: #201d1d;
+  --oc-chart-region-fill: rgba(253, 252, 252, 0.14);
+  --oc-chart-region-stroke: rgba(253, 252, 252, 0.6);
+  --oc-chart-hline-stroke: rgba(253, 252, 252, 0.85);
 }
+
+/* ---- 分析页可点击横条（§5：可点击行必须走 oc-* 类，禁止裸写 button 样式）---- */
+.oc-bar-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--oc-space-2);
+  padding: var(--oc-space-2) var(--oc-space-3);
+  border: none;
+  border-radius: var(--oc-radius-none);
+  background: transparent;
+  color: var(--text-strong);
+  font-family: var(--oc-font-mono);
+  font-size: var(--oc-text-12);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.oc-bar-row:hover {
+  background: var(--surface-base-hover);
+}
+
+.oc-bar-row:focus-visible {
+  box-shadow: var(--shadow-xs-border-focus);
+}
+
+/* ---- 分析页单视口网格（docs/DESIGN.md §2.1 / docs/PRODUCT.md §七）----
+   信息全部落在一屏内：绝不产生页面级或框架级滚动。
+   网格行负责吃掉可用高度（不把空白留在页面底部），卡内滚动区负责消化溢出。 */
+.oc-fill-grid > * {
+  min-height: 0;
+  min-width: 0;
+}
+

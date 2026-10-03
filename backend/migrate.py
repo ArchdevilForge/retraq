@@ -7,7 +7,7 @@ from models import Dataset, Trade, MasterTrader, MasterPosition  # noqa: F401 �
 LEGACY_DATASET_NAMES = ("默认", "浪哥（示例）")
 
 # Bumped when a one-shot repair is added; tracked in SQLite's PRAGMA user_version.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TRADES_TABLE_SQL = """
 CREATE TABLE trades_new (
@@ -198,14 +198,72 @@ def _add_dataset_owner_column() -> None:
         )
 
 
+def _add_kline_source_column() -> None:
+    """klines gained the exchange that produced each candle; unknown for older rows."""
+    if not _table_exists("klines") or _column_exists("klines", "source"):
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE klines ADD COLUMN source VARCHAR(16)"))
+
+
+def _normalize_profit_rate_units() -> None:
+    """Percent-style 收益率 rows become ratios, matching the API contract.
+
+    A live 交割单 reports 收益率 in percent (216.48 = +216.48%) while the sample workbook
+    reports it as a ratio (0.2264 = +22.64%); both satisfy 收益 = 保证金 x ratio, so only
+    rows whose value is ~100x the identity are rewritten. Idempotent: a rewritten row then
+    satisfies the ratio reading and is skipped on every later boot.
+    """
+    if not _table_exists("trades"):
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE trades
+                   SET profit_rate = profit_rate / 100
+                 WHERE profit_rate IS NOT NULL
+                   AND profit IS NOT NULL
+                   AND margin IS NOT NULL AND margin > 0
+                   AND abs(profit_rate - (profit * 1.0 / margin)) > 0.01 * abs(profit * 1.0 / margin) + 0.000000001
+                   AND abs(profit_rate / 100 - (profit * 1.0 / margin)) <= 0.01 * abs(profit * 1.0 / margin) + 0.000000001
+                """
+            )
+        )
+
+
+def _delete_orphan_annotations() -> None:
+    """Annotations whose subject vanished: (subject_type, subject_id) has no FK to cascade."""
+    if not _table_exists("trade_annotations"):
+        return
+    pairs = [("trade", "trades")]
+    if _table_exists("master_positions"):
+        pairs.append(("master_position", "master_positions"))
+    with engine.begin() as conn:
+        for subject, table in pairs:
+            conn.execute(
+                text(
+                    f"DELETE FROM trade_annotations WHERE subject_type = '{subject}' "
+                    f"AND subject_id NOT IN (SELECT id FROM {table})"
+                )
+            )
+
+
 def ensure_database() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_legacy_profiles()
     _add_dataset_owner_column()
-    if _read_user_version() < SCHEMA_VERSION:
+    _add_kline_source_column()
+    version = _read_user_version()
+    if version < 1:
         # One-shot repairs; never repeated, so a user dataset named 默认 survives later boots.
         _purge_legacy_default_datasets()
         _delete_orphan_rows()
         _normalize_legacy_fill_sides()
         _reset_kline_cache()
+    if version < 2:
+        _delete_orphan_rows()
+        _normalize_profit_rate_units()
+        _delete_orphan_annotations()
+    if version < SCHEMA_VERSION:
         _set_user_version(SCHEMA_VERSION)

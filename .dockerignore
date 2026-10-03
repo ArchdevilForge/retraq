@@ -6,6 +6,8 @@ node_modules
 frontend/node_modules
 frontend/dist
 backend/.venv
+backend/.env
+.env
 backend/__pycache__
 **/__pycache__
 *.db

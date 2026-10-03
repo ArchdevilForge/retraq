@@ -1,5 +1,6 @@
 import type { Time } from 'lightweight-charts';
-import type { RulerDrawStyle } from '../utils/chartTheme';
+import { readCanvasFont, type RulerDrawStyle } from '../utils/chartTheme';
+import { fmtPrice } from '../utils/fills';
 
 export type RulerCorner = { time: Time; price: number; x: number; y: number };
 
@@ -77,9 +78,12 @@ export function drawRulerOnCanvas(
   ctx.setLineDash([]);
 
   const sign = measure.priceDelta >= 0 ? '+' : '';
-  const label = `${sign}${measure.priceDelta.toFixed(4)} (${sign}${measure.pricePct.toFixed(2)}%) · ${measure.bars} 根 · ${formatDuration(measure.durationSec)}`;
+  // §9：价格精度统一走 fmtPrice（曾硬编码 toFixed(4)，BTC 会显示 +1523.4500，
+  // 与价格轴的 2404.39 不一致）。% 保留符号与两位小数。
+  const deltaText = `${sign}${fmtPrice(Math.abs(measure.priceDelta))}`;
+  const label = `${deltaText} (${sign}${measure.pricePct.toFixed(2)}%) · ${measure.bars} 根 · ${formatDuration(measure.durationSec)}`;
   const pad = 6;
-  ctx.font = '12px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.font = readCanvasFont(12);
   const tw = ctx.measureText(label).width;
   const lx = Math.min(x1, x2) + pad;
   const ly = Math.min(y1, y2) - pad;

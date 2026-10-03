@@ -104,3 +104,47 @@ def test_imported_sample_over_100_percent_rows_keep_margin_identity(db_session, 
     ]
     assert as_ratio[len(as_ratio) // 2] < 0.01
     assert min(as_percent) > 0.5
+
+
+# --- _resolve_rate: the two exporters disagree on what 收益率 means ---------------------
+
+def test_resolve_rate_keeps_a_ratio_sheet_verbatim():
+    """samples/bit-langge: 265 / 1170 = 0.2265, the sheet wrote 0.2264."""
+    imp = TradeImporter()
+    assert imp._resolve_rate(0.2264, 265.0, 1170.0) == 0.2264
+
+
+def test_resolve_rate_scales_a_percent_sheet():
+    """A live 交割单: 3030.48 / 1399.88 = 2.1648, the sheet wrote 216.48."""
+    imp = TradeImporter()
+    assert imp._resolve_rate(216.480898, 3030.47919674, 1399.8829528592) == pytest.approx(
+        2.16480898, rel=1e-6
+    )
+    assert imp._resolve_rate(86.353345, 419.78951687, 486.13) == pytest.approx(0.86353345, rel=1e-6)
+    assert imp._resolve_rate(5.0, 150.0, 3000.0) == pytest.approx(0.05, rel=1e-6)
+
+
+def test_resolve_rate_never_invents_a_number_when_the_identity_is_noisy():
+    """Fees/funding make both readings fail; the platform's own number stays."""
+    imp = TradeImporter()
+    assert imp._resolve_rate(1.4855, 100.0, 933.0) == 1.4855
+
+
+def test_resolve_rate_without_margin_falls_back_to_the_parsed_value():
+    imp = TradeImporter()
+    assert imp._resolve_rate("10%", 100.0, None) == 0.1
+    assert imp._resolve_rate(0.2264, None, 1170.0) == 0.2264
+    assert imp._resolve_rate(pd.NA, 100.0, 1170.0) is None
+
+
+def test_resolve_rate_property_matches_every_real_percent_row():
+    """The shipped DB rows are percent-style: profit/margin x 100 == the stored value."""
+    imp = TradeImporter()
+    for profit, margin, stored_percent in (
+        (331.42503082, 3658.382352941176, 9.059332000000001),
+        (3030.47919674, 1399.8829528592, 216.48089800000002),
+        (1483.99347406, 449.9306019954, 329.82719199999997),
+    ):
+        resolved = imp._resolve_rate(stored_percent, profit, margin)
+        # The sheet rounds 收益率 to 6 decimals, so compare as units, not to the last digit.
+        assert resolved == pytest.approx(profit / margin, rel=1e-5)

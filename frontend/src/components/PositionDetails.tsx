@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, LocateFixed } from 'lucide-react';
 import type { Trade, TradeFill } from '../services/api';
 import { fetchTradeFills } from '../services/api';
 import { fmtDateTime, fmtDurationMs, fmtMoney, fmtPct } from '../utils/format';
@@ -8,14 +8,23 @@ import AnnotationEditor from './AnnotationEditor';
 
 function DetailRow({ label, value, valueClassName = '' }: { label: string; value: string; valueClassName?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-0.5 text-[14px]">
+    <div className="flex items-center justify-between gap-3 py-0.5 text-oc-14">
       <div className="shrink-0 oc-text-faint">{label}</div>
       <div className={`truncate text-right font-medium tabular-nums ${valueClassName}`.trim()}>{value}</div>
     </div>
   );
 }
 
-function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () => void }) {
+function PositionDetails({
+  trade,
+  onHide,
+  onJumpToEntry,
+}: {
+  trade: Trade | null;
+  onHide?: () => void;
+  /** 对标「前往开仓时间」：把图上游标拉回该笔开仓 bar（P§七）。 */
+  onJumpToEntry?: () => void;
+}) {
   const [fills, setFills] = useState<TradeFill[]>([]);
   const [fillsError, setFillsError] = useState(false);
 
@@ -40,7 +49,7 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
   if (!trade) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center px-6 text-center">
-        <p className="text-[14px] oc-text-faint">选中交易后显示仓位与成交明细</p>
+        <p className="text-oc-14 oc-text-faint">选中交易后显示仓位与成交明细</p>
       </div>
     );
   }
@@ -56,7 +65,7 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="panel-header flex shrink-0 items-center justify-between gap-2 text-[14px] font-medium">
+      <div className="panel-header flex shrink-0 items-center justify-between gap-2 text-oc-14 font-medium">
         <span>交易详情</span>
         {onHide ? (
           <button
@@ -65,12 +74,29 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
             aria-label="隐藏仓位详情"
             onClick={onHide}
           >
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+            <ChevronRight className="h-icon-action w-icon-action" aria-hidden />
           </button>
         ) : null}
       </div>
       <div className="panel-body min-h-0 flex-1 space-y-4 overflow-y-auto">
+        {/* §三 三层记录模型：上下文层是产品核心价值，必须零摩擦、无需滚动即可触达。
+            历史偏差：标注编辑器被放在详情卡最底部（详情卡 scrollHeight 911 > 710），
+            实测导致 18 条标注里仅 2 条非空。故提到首屏第一位。 */}
+        <AnnotationEditor subjectType="trade" subjectId={trade.id} />
+
         <div className="panel-card space-y-2">
+          {onJumpToEntry ? (
+            <button
+              type="button"
+              className="oc-btn oc-btn--sm oc-btn--secondary w-full"
+              aria-label="前往开仓时间"
+              title="把图上游标拉回该笔开仓位置"
+              onClick={onJumpToEntry}
+            >
+              <LocateFixed className="h-icon-action w-icon-action" aria-hidden />
+              前往开仓时间
+            </button>
+          ) : null}
           <DetailRow label="交易对" value={trade.symbol} />
           <DetailRow label="方向" value={directionLabel} valueClassName={directionColor} />
           <DetailRow label="杠杆" value={trade.leverage?.toString?.() ?? '—'} />
@@ -83,20 +109,20 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
           <DetailRow label="开仓价" value={fmtPrice(trade.entry_price)} />
           <DetailRow label="平仓" value={trade.exit_time == null ? '—' : fmtDateTime(trade.exit_time)} />
           <DetailRow label="平仓价" value={trade.exit_price == null ? '—' : fmtPrice(trade.exit_price)} />
-          <div className={`flex justify-between border-t border-[var(--border-weaker-base)] pt-3 text-[18px] font-medium ${profitColor}`}>
+          <div className={`flex justify-between border-t border-[var(--border-weaker-base)] pt-3 text-oc-16 font-medium ${profitColor}`}>
             <span>盈亏</span>
             <span className="font-mono tabular-nums">{trade.profit == null ? '—' : fmtMoney(trade.profit)}</span>
           </div>
           <DetailRow label="收益率" value={trade.profit_rate == null ? '—' : fmtPct(trade.profit_rate)} />
         </div>
         {fillsError ? (
-          <p className="text-[13px] oc-text-loss" role="alert">
+          <p className="text-oc-13 oc-text-loss" role="alert">
             成交明细加载失败，请检查后端服务
           </p>
         ) : fills.length > 0 ? (
           <div className="panel-card">
             <div className="panel-card-title">成交 {fills.length} 笔</div>
-            <ul className="max-h-52 space-y-1.5 overflow-y-auto font-mono text-[13px] leading-snug">
+            <ul className="max-h-52 space-y-1.5 overflow-y-auto font-mono text-oc-13 leading-snug">
               {fills.map((f) => {
                 const usdt = synthetic && trade.margin != null ? trade.margin : f.price * f.qty;
                 return (
@@ -113,7 +139,6 @@ function PositionDetails({ trade, onHide }: { trade: Trade | null; onHide?: () =
             </ul>
           </div>
         ) : null}
-        <AnnotationEditor subjectType="trade" subjectId={trade.id} />
       </div>
     </div>
   );

@@ -50,22 +50,19 @@ def test_full_journey_console_and_network(browser, seed):
         row.click()
         expect(page.get_by_role("button", name=re.compile(r"^交割单"))).to_be_visible(timeout=10000)
 
-        # train: boot a run and step twice
-        goto(page, "/train")
-        page.get_by_role("button", name="配置并开始训练").click()
-        expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
-        page.locator("label:has-text('交易对') input").fill("BTC-USDT")
-        page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
-        expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
-            timeout=20000
-        )
+        # replay: 藏未来回放（原训练模式的核心能力，已并入复盘工具条）
+        goto(page, "/replay")
+        toggle = page.locator("button[title*='隐藏未来']")
+        expect(toggle).to_be_visible(timeout=10000)
+        toggle.click()
+        expect(page.get_by_text(re.compile(r"已隐藏未来"))).to_be_visible(timeout=5000)
         for _ in range(2):
-            page.locator("button:has-text('前进一步')").click()
+            page.keyboard.press("ArrowRight")
             page.wait_for_timeout(120)
 
         # analysis: all six tabs
         goto(page, "/analysis")
-        for label in ("行为", "时间", "风险", "标签", "复盘"):
+        for label in ("行为", "时间", "风险", "标签"):
             page.get_by_role("tab", name=label).click()
             page.wait_for_timeout(250)
 
@@ -75,8 +72,8 @@ def test_full_journey_console_and_network(browser, seed):
         ctx.close()
 
 
-def test_cpu_throttled_training_flow(browser, seed, api):
-    """Layer 4 — 4× CPU 节流下训练开局+下单+推进仍可完成。"""
+def test_cpu_throttled_replay_review_flow(browser, seed, api):
+    """Layer 4 — 4× CPU 节流下复盘（含藏未来回放 + 标注）仍可完成。"""
     ctx = new_context(browser, seed)
     page = ctx.new_page()
     try:
@@ -84,26 +81,25 @@ def test_cpu_throttled_training_flow(browser, seed, api):
         cdp = ctx.new_cdp_session(page)
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
 
-        goto(page, "/train")
-        r = api.get("/api/klines/BTC-USDT/15m", params={"limit": 1000})
-        bars = r.json()["data"]
-        idx = len(bars) - 130
-        page.get_by_role("button", name="配置并开始训练").click()
-        expect(page.locator("dialog[aria-label='训练场景配置']")).to_be_visible(timeout=10000)
-        page.locator("label:has-text('交易对') input").fill("BTC-USDT")
-        page.locator("label:has-text('开始') input").fill(_dt(bars[idx]["timestamp"]))
-        page.locator("label:has-text('结束') input").fill(_dt(bars[-1]["timestamp"]))
-        page.locator("dialog[aria-label='训练场景配置']").get_by_role("button", name="开始训练").click()
-        expect(page.locator(".oc-stat", has=page.locator(".oc-stat__label", has_text="标记价"))).to_be_visible(
-            timeout=30000
-        )
-        page.locator("button:has-text('开仓')").last.click()
-        expect(page.locator(".oc-float-panel--right").get_by_text(re.compile(r"^[多空] @ \d"))).to_be_visible(
-            timeout=10000
-        )
+        goto(page, "/replay")
+        page.get_by_role("button", name="打开持仓列表").click()
+        page.locator("[aria-label='持仓列表'] button.oc-list-item").first.click()
+        expect(page.locator(".oc-chart-toolbar").first).to_be_visible(timeout=15000)
+        # 列表弹窗选中后保持开（评审定稿）：操作图面前先 Esc 关浮卡与弹窗
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+
+        # 藏未来回放：开启后逐根推进（aria-label 精确定位，回放传输/磁吸也带 aria-pressed）
+        toggle = page.locator(".oc-chart-toolbar button[aria-label='隐藏未来 K 线']").first
+        expect(toggle).to_be_visible(timeout=15000)
+        toggle.click()
+        expect(page.get_by_text(re.compile("已隐藏未来"))).to_be_visible(timeout=10000)
         for _ in range(3):
-            page.locator("button:has-text('前进一步')").click()
+            page.keyboard.press("ArrowRight")
             page.wait_for_timeout(150)
+
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()
@@ -130,7 +126,7 @@ def test_heap_stable_over_long_session(browser, seed):
         base = _heap_used_mb(cdp)
 
         for _ in range(2):
-            for path in ("/replay", "/train", "/analysis", "/replay"):
+            for path in ("/replay", "/analysis", "/replay"):
                 goto(page, path)
                 page.wait_for_timeout(400)
 

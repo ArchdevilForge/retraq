@@ -31,8 +31,7 @@ def is_valid_symbol(symbol: str) -> bool:
         return False
     if not base.isalnum() or not quote.isalnum():
         return False
-    if not any(ch.isalpha() for ch in base):
-        return False
+    # Binance has valid numeric-only base assets (for example 4USDT).
     if not any(ch.isalpha() for ch in quote):
         return False
     return True

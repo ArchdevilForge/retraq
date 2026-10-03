@@ -5,8 +5,6 @@ from database import Base
 # Annotation subjects: a locally imported trade or a synced master delivery slip.
 SUBJECT_TRADE = "trade"
 SUBJECT_MASTER_POSITION = "master_position"
-# Drawing kinds: hline (1 point) | trend (2) | region (2) | fib (2)
-DRAWING_KINDS = ("hline", "trend", "region", "fib")
 
 
 class Dataset(Base):
@@ -31,6 +29,8 @@ class Kline(Base):
     low = Column(Float, nullable=False)
     close = Column(Float, nullable=False)
     volume = Column(Float, nullable=False)
+    # Which exchange produced this candle; NULL for rows cached before the column existed.
+    source = Column(String(16), nullable=True)
 
     __table_args__ = (
         Index("ix_kline_symbol_tf_ts", "symbol", "timeframe", "timestamp", unique=True),
@@ -141,15 +141,11 @@ class MasterTrader(Base):
     mdd = Column(Float, nullable=True)
     win_rate = Column(Float, nullable=True)
     sharp_ratio = Column(Float, nullable=True)
-    aum = Column(Float, nullable=True)
     trading_days = Column(Integer, nullable=True)
-    current_copy_count = Column(Integer, nullable=True)
-    max_copy_count = Column(Integer, nullable=True)
     badge = Column(String(32), nullable=True)
-    tags = Column(String(256), nullable=True)
+    # equity_chart powers the master list sparkline + detail panel curve; the
+    # 30d/90d variants and the copy-count/AUM columns never reached the UI.
     equity_chart = Column(Text, nullable=True)
-    equity_chart_30d = Column(Text, nullable=True)
-    equity_chart_90d = Column(Text, nullable=True)
     detail_url = Column(String(512), nullable=True)
     has_positions = Column(Boolean, default=False, nullable=False, index=True)
     position_count = Column(Integer, default=0, nullable=False)

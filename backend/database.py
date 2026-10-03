@@ -25,6 +25,11 @@ def _enable_sqlite_foreign_keys(dbapi_connection: Any, connection_record: Any) -
         return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    # WAL: kline back-fills write while the UI keeps reading, instead of blocking each other.
+    # synchronous=NORMAL is the standard WAL pairing; a crash can only lose the last commit.
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
     cursor.close()
 
 

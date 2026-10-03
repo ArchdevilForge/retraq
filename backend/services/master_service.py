@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from models import MasterTrader, MasterPosition
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 
+MASTER_HISTORY_PAGE_SIZE = 100
+MASTER_HISTORY_MAX_PAGES = 40
+
 CONTRACT_MASTER_QUOTES = [
     {
         "id": "bitking",
@@ -108,7 +111,7 @@ class MasterService:
             term = f"%{search.strip()}%"
             q = q.filter((MasterTrader.nickname.ilike(term)) | (MasterTrader.id.ilike(term)))
 
-        sort_col = getattr(MasterTrader, sort_by, MasterTrader.roi)
+        sort_col = getattr(MasterTrader, sort_by, MasterTrader.sharp_ratio)
         # Handle nulls
         if sort_order.lower() == "asc":
             q = q.order_by(asc(sort_col).nullslast())
@@ -130,7 +133,7 @@ class MasterService:
         t = db.query(MasterTrader).filter(MasterTrader.id == trader_id).first()
         if not t:
             return None
-        return MasterService._trader_to_dict(t, full=True)
+        return MasterService._trader_to_dict(t)
 
     @staticmethod
     def get_master_positions(
@@ -210,12 +213,6 @@ class MasterService:
                         setattr(trader, "nickname", str(detail_data["nickname"]))
                     if detail_data.get("avatarUrl"):
                         setattr(trader, "avatar_url", str(detail_data["avatarUrl"]))
-                    if detail_data.get("aumAmount") is not None:
-                        setattr(trader, "aum", float(detail_data["aumAmount"]))
-                    if detail_data.get("currentCopyCount") is not None:
-                        setattr(trader, "current_copy_count", int(detail_data["currentCopyCount"]))
-                    if detail_data.get("maxCopyCount") is not None:
-                        setattr(trader, "max_copy_count", int(detail_data["maxCopyCount"]))
                     if detail_data.get("badgeName"):
                         setattr(trader, "badge", str(detail_data["badgeName"]))
                     if detail_data.get("sharpRatio") is not None:
@@ -223,85 +220,98 @@ class MasterService:
         except Exception as e:
             logger.warning("Failed to fetch Binance profile detail for %s: %s", trader_id, e)
 
-        # 2. Fetch position history from Binance (page 1 and 2, up to 100 positions)
+        # 2. Fetch position history from Binance. The endpoint is newest-first;
+        # walk every reported page so a stale local snapshot can catch up.
         new_positions_count = 0
         try:
             history_url = "https://www.binance.com/bapi/futures/v1/friendly/future/copy-trade/lead-portfolio/position-history"
-            existing_pos_ids = set(
+            existing_pos_ids = {
                 row[0]
                 for row in db.query(MasterPosition.position_id)
                 .filter(MasterPosition.trader_id == trader_id)
                 .filter(MasterPosition.position_id.isnot(None))
                 .all()
-            )
-            existing_opened_times = set(
-                row[0]
-                for row in db.query(MasterPosition.opened_at)
-                .filter(MasterPosition.trader_id == trader_id)
-                .all()
-            )
+            }
 
-            for page_num in (1, 2):
-                payload = {"portfolioId": trader_id, "pageNumber": page_num, "pageSize": 50}
-                req = urllib.request.Request(history_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            for page_num in range(1, MASTER_HISTORY_MAX_PAGES + 1):
+                payload = {
+                    "portfolioId": trader_id,
+                    "pageNumber": page_num,
+                    "pageSize": MASTER_HISTORY_PAGE_SIZE,
+                }
+                req = urllib.request.Request(
+                    history_url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers=headers,
+                    method="POST",
+                )
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     history_json = json.loads(resp.read().decode("utf-8"))
-                    items = (history_json.get("data") or {}).get("list") or []
-                    if not items:
-                        break
-                    for item in items:
-                        raw_pos_id = str(item.get("positionId") or item.get("id") or "")
-                        raw_sym = str(item.get("symbol") or "")
-                        norm_sym = normalize_symbol(raw_sym)
-                        if not is_valid_symbol(norm_sym):
-                            continue
 
-                        opened = int(item.get("opened") or 0)
-                        if raw_pos_id and raw_pos_id in existing_pos_ids:
-                            continue
-                        if opened and opened in existing_opened_times:
-                            continue
+                if history_json.get("code") not in (None, 0, "000000"):
+                    raise RuntimeError(history_json.get("message") or "Binance position history request failed")
 
-                        side_str = "LONG" if "long" in str(item.get("side", "")).lower() else "SHORT"
-                        closed = int(item.get("closed") or item.get("updateTime") or 0)
-                        entry_p = float(item.get("avgCost") or 0.0)
-                        close_p = float(item.get("avgClosePrice") or 0.0)
-                        pnl_val = float(item.get("closingPnl") or 0.0)
+                history_data = history_json.get("data") or {}
+                items = history_data.get("list") or []
+                if not items:
+                    break
 
-                        raw_roi = float(item.get("roi") or 0.0)
-                        roi_val = raw_roi * 100.0 if abs(raw_roi) < 10.0 else raw_roi
+                for item in items:
+                    raw_pos_id = str(item.get("positionId") or item.get("id") or "")
+                    raw_sym = str(item.get("symbol") or "")
+                    norm_sym = normalize_symbol(raw_sym)
+                    if not is_valid_symbol(norm_sym):
+                        continue
 
-                        pos = MasterPosition(
-                            position_id=raw_pos_id or None,
-                            trader_id=trader_id,
-                            symbol=norm_sym,
-                            side=side_str,
-                            leverage=float(item.get("leverage") or 20.0),
-                            margin_mode=str(item.get("isolated") or "Cross"),
-                            entry_price=entry_p,
-                            close_price=close_p if close_p > 0 else None,
-                            pnl=pnl_val,
-                            roi=roi_val,
-                            max_open_amount=float(item.get("maxOpenInterest") or 0.0),
-                            closed_amount=float(item.get("closedVolume") or 0.0),
-                            opened_at=opened,
-                            closed_at=closed if closed > 0 else None,
-                            status=str(item.get("status") or "All Closed"),
-                        )
-                        db.add(pos)
-                        new_positions_count += 1
-                        if raw_pos_id:
-                            existing_pos_ids.add(raw_pos_id)
-                        if opened:
-                            existing_opened_times.add(opened)
+                    if raw_pos_id and raw_pos_id in existing_pos_ids:
+                        continue
+
+                    opened = int(item.get("opened") or 0)
+                    side_str = "LONG" if "long" in str(item.get("side", "")).lower() else "SHORT"
+                    closed = int(item.get("closed") or item.get("updateTime") or 0)
+                    entry_p = float(item.get("avgCost") or 0.0)
+                    close_p = float(item.get("avgClosePrice") or 0.0)
+                    pnl_val = float(item.get("closingPnl") or 0.0)
+
+                    raw_roi = float(item.get("roi") or 0.0)
+                    roi_val = raw_roi * 100.0 if abs(raw_roi) < 10.0 else raw_roi
+
+                    pos = MasterPosition(
+                        position_id=raw_pos_id or None,
+                        trader_id=trader_id,
+                        symbol=norm_sym,
+                        side=side_str,
+                        leverage=float(item.get("leverage") or 20.0),
+                        margin_mode=str(item.get("isolated") or "Cross"),
+                        entry_price=entry_p,
+                        close_price=close_p if close_p > 0 else None,
+                        pnl=pnl_val,
+                        roi=roi_val,
+                        max_amount=float(item.get("maxOpenInterest") or 0.0),
+                        closed_amount=float(item.get("closedVolume") or 0.0),
+                        opened_at=opened,
+                        closed_at=closed if closed > 0 else None,
+                        status=str(item.get("status") or "All Closed"),
+                    )
+                    db.add(pos)
+                    new_positions_count += 1
+                    if raw_pos_id:
+                        existing_pos_ids.add(raw_pos_id)
+
+                total = int(history_data.get("total") or 0)
+                if (total and page_num * MASTER_HISTORY_PAGE_SIZE >= total) or (
+                    not total and len(items) < MASTER_HISTORY_PAGE_SIZE
+                ):
+                    break
 
             total_count = db.query(MasterPosition).filter(MasterPosition.trader_id == trader_id).count() + new_positions_count
             setattr(trader, "position_count", int(total_count))
             setattr(trader, "has_positions", bool(total_count > 0))
             db.commit()
-        except Exception as e:
-            logger.warning("Failed to fetch Binance position history for %s: %s", trader_id, e)
-            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Failed to fetch Binance position history for %s", trader_id)
+            raise
 
         total_positions = db.query(MasterPosition).filter(MasterPosition.trader_id == trader_id).count()
         return {
@@ -367,7 +377,7 @@ class MasterService:
         return CONTRACT_MASTER_QUOTES
 
     @staticmethod
-    def _trader_to_dict(t: MasterTrader, full: bool = False) -> dict:
+    def _trader_to_dict(t: MasterTrader) -> dict:
         chart_data = []
         if t.equity_chart:
             try:
@@ -375,14 +385,7 @@ class MasterService:
             except Exception:
                 chart_data = []
 
-        tags_data = []
-        if t.tags:
-            try:
-                tags_data = json.loads(str(t.tags))
-            except Exception:
-                tags_data = []
-
-        d = {
+        return {
             "id": t.id,
             "nickname": t.nickname,
             "market": t.market,
@@ -392,31 +395,13 @@ class MasterService:
             "mdd": t.mdd,
             "win_rate": t.win_rate,
             "sharp_ratio": t.sharp_ratio,
-            "aum": t.aum,
             "trading_days": t.trading_days,
-            "current_copy_count": t.current_copy_count,
-            "max_copy_count": t.max_copy_count,
             "badge": t.badge,
-            "tags": tags_data,
             "equity_chart": chart_data,
             "detail_url": t.detail_url,
             "has_positions": t.has_positions,
             "position_count": t.position_count,
         }
-
-        if full:
-            if t.equity_chart_30d:
-                try:
-                    d["equity_chart_30d"] = json.loads(str(t.equity_chart_30d))
-                except Exception:
-                    d["equity_chart_30d"] = []
-            if t.equity_chart_90d:
-                try:
-                    d["equity_chart_90d"] = json.loads(str(t.equity_chart_90d))
-                except Exception:
-                    d["equity_chart_90d"] = []
-
-        return d
 
     @staticmethod
     def _position_to_dict(p: MasterPosition) -> dict:

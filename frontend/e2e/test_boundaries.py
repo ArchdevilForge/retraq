@@ -1,6 +1,6 @@
 """边界值测试 — 弹窗/浮层在任何视口都不得溢出窗口（goal: 详细测试 UIUX 边界）。
 
-对每个浮层（高手榜弹窗、持仓弹窗、训练场景 modal、详情浮卡、今日复盘卡）
+对每个浮层（高手榜弹窗、持仓弹窗、详情浮卡）
 在小视口（1024×640 / 1280×720）下断言：边界全部落在视口内，且内容可内部滚动。
 """
 
@@ -84,29 +84,7 @@ def test_trades_modal_fits_small_viewports(browser, seed, w, h):
 
 
 @pytest.mark.parametrize("w,h", VIEWPORTS)
-def test_train_modal_fits_small_viewports(browser, seed, w, h):
-    ctx = new_context(browser, seed, viewport=(w, h))
-    page = ctx.new_page()
-    try:
-        hook_page(page)
-        goto(page, "/train")
-        page.get_by_role("button", name="配置并开始训练").click()
-        modal = page.locator("dialog[aria-label='训练场景配置']")
-        expect(modal).to_be_visible(timeout=10000)
-        page.wait_for_timeout(300)
-        _assert_within_viewport(page, "dialog[aria-label='训练场景配置']")
-        # 表单在 cap 内必须可完整触达（body 可滚）
-        body = modal.locator(".oc-modal__body")
-        scroll_ok = body.evaluate(
-            "(el) => el.scrollHeight >= el.clientHeight - 2 && el.scrollHeight <= el.clientHeight + 2000"
-        )
-        assert scroll_ok
-    finally:
-        ctx.close()
-
-
-@pytest.mark.parametrize("w,h", VIEWPORTS)
-def test_detail_card_and_daily_review_fit(browser, seed, w, h):
+def test_detail_card_fit(browser, seed, w, h):
     ctx = new_context(browser, seed, viewport=(w, h))
     page = ctx.new_page()
     try:
@@ -119,12 +97,6 @@ def test_detail_card_and_daily_review_fit(browser, seed, w, h):
         expect(card).to_be_visible(timeout=10000)
         page.wait_for_timeout(400)
         _assert_within_viewport(page, ".oc-float-panel--right")
-        # 今日复盘卡
-        page.get_by_role("button", name="打开今日复盘").click()
-        review = page.locator("[data-testid='daily-review-card']")
-        expect(review).to_be_visible(timeout=10000)
-        page.wait_for_timeout(200)
-        _assert_within_viewport(page, "[data-testid='daily-review-card']")
         assert_console_clean(page._console_errors)
     finally:
         ctx.close()

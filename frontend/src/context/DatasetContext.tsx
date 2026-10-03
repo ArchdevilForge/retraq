@@ -1,5 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ACTIVE_DATASET_STORAGE_KEY, fetchDatasets, type Dataset } from '../services/api';
+import {
+  ACTIVE_DATASET_STORAGE_KEY,
+  fetchDatasets,
+  invalidateSymbolStats,
+  type Dataset,
+} from '../services/api';
 
 type DatasetContextValue = {
   datasets: Dataset[];
@@ -26,6 +31,7 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const notifyTradesChanged = useCallback(() => {
+    invalidateSymbolStats(); // the symbol distribution just changed
     setTradesRevision((n) => n + 1);
   }, []);
 

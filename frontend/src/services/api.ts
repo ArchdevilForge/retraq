@@ -104,6 +104,15 @@ export interface Trade {
 export const TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d'] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
+/** 周期 → 毫秒。训练模块删除后统一到此处（此前 ChartManager / training 各有一份）。 */
+export const TIMEFRAME_MS: Record<Timeframe, number> = {
+  '5m': 5 * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '4h': 4 * 60 * 60 * 1000,
+  '1d': 24 * 60 * 60 * 1000,
+};
+
 export interface TradesResponse {
   total: number;
   page: number;
@@ -133,11 +142,6 @@ export async function updateDataset(id: number, name: string): Promise<Dataset> 
 
 export async function deleteDataset(id: number): Promise<void> {
   await apiFetch<void>(`/api/datasets/${id}`, { method: 'DELETE' });
-}
-
-export async function fetchImportTemplates(): Promise<{ id: string; label: string }[]> {
-  const data = await apiFetch<{ templates: { id: string; label: string }[] }>('/api/import/templates');
-  return data.templates;
 }
 
 export async function fetchKlines(
@@ -180,8 +184,26 @@ export interface SymbolStats {
   symbol_distribution: Record<string, number>;
 }
 
-export async function fetchSymbolStats(): Promise<SymbolStats> {
-  return apiFetch<SymbolStats>('/api/stats/symbols');
+// Three components (trade list, chart compare, page auto-pick) need the same stats on
+// every load; one in-flight/one-shot promise per dataset keeps that at a single request.
+let symbolStatsCache: { key: string; promise: Promise<SymbolStats> } | null = null;
+
+/** Drop the shared stats result — call when the dataset's trades change. */
+export function invalidateSymbolStats(): void {
+  symbolStatsCache = null;
+}
+
+export function fetchSymbolStats(): Promise<SymbolStats> {
+  const key = localStorage.getItem(ACTIVE_DATASET_STORAGE_KEY) ?? '';
+  if (!symbolStatsCache || symbolStatsCache.key !== key) {
+    const promise = apiFetch<SymbolStats>('/api/stats/symbols');
+    symbolStatsCache = { key, promise };
+    // A failure must not be cached: the picker's retry would keep replaying it.
+    promise.catch(() => {
+      if (symbolStatsCache?.promise === promise) symbolStatsCache = null;
+    });
+  }
+  return symbolStatsCache.promise;
 }
 
 /** Paged loader; `total` is the server-side row count, which may exceed `trades.length`. */
@@ -289,15 +311,9 @@ export interface MasterTrader {
   mdd: number | null;
   win_rate: number | null;
   sharp_ratio: number | null;
-  aum: number | null;
   trading_days: number | null;
-  current_copy_count: number | null;
-  max_copy_count: number | null;
   badge: string | null;
-  tags: string[];
   equity_chart: Array<{ time: number; value: number }>;
-  equity_chart_30d?: Array<{ time: number; value: number }>;
-  equity_chart_90d?: Array<{ time: number; value: number }>;
   detail_url: string | null;
   has_positions: boolean;
   position_count: number;
@@ -544,22 +560,12 @@ export async function deleteDrawing(id: number): Promise<void> {
 
 /* ---- Binance auto sync (docs/PRODUCT.md §四) ---- */
 
-export interface BinanceSyncStatus {
-  configured: boolean;
-  dataset_id: number | null;
-  trade_count: number;
-}
-
 export interface BinanceSyncResult {
   success: boolean;
   dataset_id: number;
   dataset_name: string;
   new_fills: number;
   trade_count: number;
-}
-
-export async function fetchBinanceSyncStatus(): Promise<BinanceSyncStatus> {
-  return apiFetch<BinanceSyncStatus>('/api/binance/sync/status', { skipDataset: true });
 }
 
 export async function runBinanceSync(): Promise<BinanceSyncResult> {
@@ -622,87 +628,6 @@ export async function fetchRDistribution(includeSim: boolean, includeMaster = fa
 export async function fetchDiscipline(includeSim: boolean, includeMaster = false): Promise<OwnerGroup<DisciplineStat>> {
   return apiFetch<OwnerGroup<DisciplineStat>>('/api/analysis/discipline', {
     params: { include_sim: includeSim, include_master: includeMaster },
-    skipDataset: true,
-  });
-}
-
-export interface ReviewChecklist {
-  cadence: 'daily' | 'weekly' | 'monthly';
-  label: string;
-  questions: string[];
-}
-
-export interface ReviewNote {
-  id: number;
-  cadence: 'daily' | 'weekly' | 'monthly';
-  period_key: string;
-  content: string;
-  updated_at: string | null;
-}
-
-export async function fetchReviewChecklists(): Promise<ReviewChecklist[]> {
-  const res = await apiFetch<{ data: ReviewChecklist[] }>('/api/analysis/checklists', {
-    skipDataset: true,
-  });
-  return res.data;
-}
-
-export async function fetchReviews(cadence?: string): Promise<ReviewNote[]> {
-  const res = await apiFetch<{ data: ReviewNote[] }>('/api/reviews', {
-    params: { cadence },
-    skipDataset: true,
-  });
-  return res.data;
-}
-
-export async function upsertReview(
-  cadence: ReviewNote['cadence'],
-  periodKey: string,
-  content: string,
-): Promise<ReviewNote> {
-  return apiFetch<ReviewNote>('/api/reviews', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cadence, period_key: periodKey, content }),
-    skipDataset: true,
-  });
-}
-
-/* ---- Training session persistence (docs/PRODUCT.md §六) ---- */
-
-export interface TrainingCycleInput {
-  symbol: string;
-  direction: 'long' | 'short';
-  leverage: number;
-  entry_price: number;
-  exit_price: number;
-  profit: number;
-  margin: number;
-  entry_time: number;
-  exit_time: number;
-}
-
-export interface TrainingSaveResult {
-  success: boolean;
-  dataset_id: number;
-  dataset_name: string;
-  trade_count: number;
-  realized_pnl: number;
-  fees: number;
-}
-
-export async function saveTrainingSession(input: {
-  symbol: string;
-  timeframe: string;
-  start_equity: number;
-  realized_pnl: number;
-  fees: number;
-  trades: TrainingCycleInput[];
-}): Promise<TrainingSaveResult> {
-  return apiFetch<TrainingSaveResult>('/api/train/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
     skipDataset: true,
   });
 }

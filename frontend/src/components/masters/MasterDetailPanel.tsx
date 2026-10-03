@@ -115,7 +115,7 @@ export default function MasterDetailPanel({
 
   if (!trader) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-xs text-[var(--oc-text-faint)]">
+      <div className="flex h-full items-center justify-center p-6 text-center text-oc-12 text-[var(--oc-text-faint)]">
         请从左侧选择一位合约交易员
       </div>
     );
@@ -131,7 +131,7 @@ export default function MasterDetailPanel({
       <div className="shrink-0 border-b border-[var(--oc-border)] p-4 bg-[var(--oc-surface-1)]">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-[var(--oc-border)] bg-[var(--oc-surface-2)]">
+            <div className="relative h-control-nav w-control-nav shrink-0 overflow-hidden rounded-none border border-[var(--oc-border)] bg-[var(--oc-surface-2)]">
               {trader.avatar_url ? (
                 <img
                   src={trader.avatar_url}
@@ -142,7 +142,7 @@ export default function MasterDetailPanel({
                   }}
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center font-mono text-base font-bold text-[var(--oc-text-muted)]">
+                <div className="flex h-full w-full items-center justify-center font-mono text-oc-16 font-bold text-[var(--oc-text-muted)]">
                   {trader.nickname.slice(0, 1).toUpperCase()}
                 </div>
               )}
@@ -150,17 +150,17 @@ export default function MasterDetailPanel({
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="truncate text-base font-bold text-[var(--oc-text-base)]">
+                <h2 className="truncate text-oc-16 font-bold text-[var(--oc-text-base)]">
                   {trader.nickname}
                 </h2>
                 {trader.badge && (
-                  <span className="rounded bg-[var(--oc-accent)] px-1.5 py-0.2 font-mono text-[10px] font-semibold text-[var(--oc-bg)]">
+                  <span className="rounded-none bg-[var(--oc-accent)] px-1.5 py-0.5 font-mono text-oc-10 font-semibold text-[var(--oc-bg)]">
                     {trader.badge}
                   </span>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-[var(--oc-text-muted)]">
-                <span className="rounded bg-[var(--oc-surface-2)] px-1.5 py-0.5 font-mono text-[10px]">
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-oc-11 text-[var(--oc-text-muted)]">
+                <span className="rounded-none bg-[var(--oc-surface-2)] px-1.5 py-0.5 font-mono text-oc-10">
                   币安合约实盘
                 </span>
                 {trader.detail_url && (
@@ -171,7 +171,7 @@ export default function MasterDetailPanel({
                     className="flex items-center gap-0.5 text-[var(--oc-accent)] hover:underline"
                   >
                     <span>币安主页</span>
-                    <ExternalLink className="h-3 w-3" />
+                    <ExternalLink className="h-icon-inline w-icon-inline" aria-hidden />
                   </a>
                 )}
               </div>
@@ -181,12 +181,12 @@ export default function MasterDetailPanel({
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              className="oc-btn oc-btn--sm oc-btn--secondary shrink-0 flex items-center gap-1 text-[11px]"
+              className="oc-btn oc-btn--sm oc-btn--secondary shrink-0 flex items-center gap-1 text-oc-11"
               onClick={handleSync}
               disabled={syncing}
               title="连接币安实盘公开接口，拉取该交易员最新交割单与画像"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-icon-action w-icon-action ${syncing ? 'animate-spin' : ''}`} aria-hidden />
               <span>{syncing ? '同步中…' : '更新最新交割单'}</span>
             </button>
             {onHide && (
@@ -196,18 +196,18 @@ export default function MasterDetailPanel({
                 onClick={onHide}
                 aria-label="收起详情"
               >
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-icon-tool w-icon-tool" aria-hidden />
               </button>
             )}
           </div>
         </div>
 
         {/* Key Metrics Grid */}
-        <div className="mt-3.5 grid grid-cols-3 gap-2 rounded-lg border border-[var(--oc-border)] bg-[var(--oc-surface-0)] p-2.5">
+        <div className="mt-oc-3 grid grid-cols-3 gap-oc-2 rounded-none border border-[var(--oc-border)] bg-[var(--oc-surface-0)] p-oc-2">
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">收益率 (ROI)</div>
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">收益率 (ROI)</div>
             <div
-              className={`font-mono text-[13px] font-bold ${
+              className={`font-mono text-oc-13 font-bold ${
                 isPositiveRoi ? 'oc-text-profit' : 'oc-text-loss'
               }`}
             >
@@ -218,9 +218,9 @@ export default function MasterDetailPanel({
           </div>
 
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">结算盈亏 (PnL)</div>
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">结算盈亏 (PnL)</div>
             <div
-              className={`font-mono text-[13px] font-bold ${
+              className={`font-mono text-oc-13 font-bold ${
                 isPositivePnl ? 'oc-text-profit' : 'oc-text-loss'
               }`}
             >
@@ -229,29 +229,29 @@ export default function MasterDetailPanel({
           </div>
 
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">胜率 (Win Rate)</div>
-            <div className="font-mono text-[13px] font-bold text-[var(--oc-text-base)]">
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">胜率 (Win Rate)</div>
+            <div className="font-mono text-oc-13 font-bold text-[var(--oc-text-base)]">
               {trader.win_rate != null ? `${trader.win_rate.toFixed(1)}%` : '—'}
             </div>
           </div>
 
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">最大回撤 (MDD)</div>
-            <div className="font-mono text-[12px] text-[var(--oc-text-muted)]">
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">最大回撤 (MDD)</div>
+            <div className="font-mono text-oc-12 text-[var(--oc-text-muted)]">
               {trader.mdd != null ? `${trader.mdd.toFixed(2)}%` : '—'}
             </div>
           </div>
 
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">夏普比率</div>
-            <div className="font-mono text-[12px] text-[var(--oc-text-muted)]">
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">夏普比率</div>
+            <div className="font-mono text-oc-12 text-[var(--oc-text-muted)]">
               {trader.sharp_ratio != null ? trader.sharp_ratio.toFixed(2) : '—'}
             </div>
           </div>
 
           <div>
-            <div className="text-[10px] text-[var(--oc-text-faint)]">交割单 / 天数</div>
-            <div className="font-mono text-[12px] text-[var(--oc-text-muted)]">
+            <div className="text-oc-10 text-[var(--oc-text-faint)]">交割单 / 天数</div>
+            <div className="font-mono text-oc-12 text-[var(--oc-text-muted)]">
               {trader.position_count} 笔 / {trader.trading_days || '—'} 天
             </div>
           </div>
@@ -299,7 +299,8 @@ export default function MasterDetailPanel({
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-weak-base)] p-2.5 bg-[var(--background-weak)]">
               <input
                 type="text"
-                className="oc-input max-w-[140px] text-[12px]"
+                aria-label="过滤交割单标的"
+                className="oc-input max-w-[140px] text-oc-12"
                 placeholder="过滤标的 (如 ETH)…"
                 value={symbolSearch}
                 onChange={(e) => {
@@ -310,7 +311,8 @@ export default function MasterDetailPanel({
 
               <div className="flex items-center gap-1.5">
                 <select
-                  className="oc-select text-[12px]"
+                  aria-label="交割单排序"
+                  className="oc-select text-oc-12"
                   value={`${posSortBy}_${posSortOrder}`}
                   onChange={(e) => {
                     const [by, order] = e.target.value.split('_');
@@ -371,7 +373,7 @@ export default function MasterDetailPanel({
               )}
 
               {!posLoading && positions.length === 0 && (
-                <div className="py-12 text-center text-xs text-[var(--oc-text-faint)]">
+                <div className="py-12 text-center text-oc-12 text-[var(--oc-text-faint)]">
                   暂无匹配的合约交割单
                 </div>
               )}
@@ -388,7 +390,7 @@ export default function MasterDetailPanel({
                       <button
                         key={pos.id}
                         type="button"
-                        className={`w-full rounded-md border p-2.5 text-left transition-all ${
+                        className={`w-full rounded-none border p-oc-2 text-left transition-all ${
                           isSelected
                             ? 'border-[var(--oc-accent)] bg-[var(--oc-surface-2)] shadow-xs'
                             : 'border-[var(--oc-border)] bg-[var(--oc-surface-1)] hover:bg-[var(--oc-surface-2)]'
@@ -398,23 +400,27 @@ export default function MasterDetailPanel({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <span
-                              className={`flex items-center gap-0.5 rounded px-1.5 py-0.2 font-mono text-[11px] font-bold ${
+                              className={`flex items-center gap-0.5 rounded-none px-1.5 py-0.5 font-mono text-oc-11 font-bold ${
                                 isLong
-                                  ? 'bg-[var(--oc-surface-success)] text-[var(--oc-pnl-up,#30D158)]'
-                                  : 'bg-[var(--oc-surface-error)] text-[var(--oc-pnl-down,#FF3B30)]'
+                                  ? 'bg-[var(--oc-surface-success)] text-[var(--oc-pnl-up)]'
+                                  : 'bg-[var(--oc-surface-error)] text-[var(--oc-pnl-down)]'
                               }`}
                             >
-                              {isLong ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                              {isLong ? (
+                                <TrendingUp className="h-icon-inline w-icon-inline" aria-hidden />
+                              ) : (
+                                <TrendingDown className="h-icon-inline w-icon-inline" aria-hidden />
+                              )}
                               {isLong ? '多' : '空'} {pos.leverage}x
                             </span>
-                            <span className="font-mono text-[13px] font-bold text-[var(--oc-text-base)]">
+                            <span className="font-mono text-oc-13 font-bold text-[var(--oc-text-base)]">
                               {pos.symbol}
                             </span>
                           </div>
 
                           <div className="text-right">
                             <span
-                              className={`font-mono text-[13px] font-bold tabular-nums ${
+                              className={`font-mono text-oc-13 font-bold tabular-nums ${
                                 isProfit ? 'oc-text-profit' : 'oc-text-loss'
                               }`}
                             >
@@ -424,7 +430,7 @@ export default function MasterDetailPanel({
                             </span>
                             {pos.roi != null && (
                               <span
-                                className={`ml-1.5 font-mono text-[11px] ${
+                                className={`ml-1.5 font-mono text-oc-11 ${
                                   pos.roi >= 0 ? 'oc-text-profit' : 'oc-text-loss'
                                 }`}
                               >
@@ -435,18 +441,18 @@ export default function MasterDetailPanel({
                           </div>
                         </div>
 
-                        <div className="mt-1.5 flex items-center justify-between text-[11px] text-[var(--oc-text-muted)]">
+                        <div className="mt-1.5 flex items-center justify-between text-oc-11 text-[var(--oc-text-muted)]">
                           <div className="flex items-center gap-2 font-mono">
                             <span>开: {fmtMoney(pos.entry_price)}</span>
                             {pos.close_price && <span>平: {fmtMoney(pos.close_price)}</span>}
                           </div>
-                          <div className="flex items-center gap-1.5 text-[10px] text-[var(--oc-text-faint)]">
-                            <Clock className="h-3 w-3" />
+                          <div className="flex items-center gap-1.5 text-oc-10 text-[var(--oc-text-faint)]">
+                            <Clock className="h-icon-inline w-icon-inline" aria-hidden />
                             <span>{fmtDurationMs(durationMs)}</span>
                           </div>
                         </div>
 
-                        <div className="mt-1 font-mono text-[10px] text-[var(--oc-text-faint)]">
+                        <div className="mt-1 font-mono text-oc-10 text-[var(--oc-text-faint)]">
                           {fmtDateTime(pos.opened_at)}
                         </div>
                       </button>
@@ -458,7 +464,7 @@ export default function MasterDetailPanel({
 
             {/* Pagination */}
             {posPages > 1 && (
-              <div className="flex shrink-0 items-center justify-between border-t border-[var(--oc-border)] px-3 py-2 text-[11px] text-[var(--oc-text-muted)] bg-[var(--oc-surface-1)]">
+              <div className="flex shrink-0 items-center justify-between border-t border-[var(--oc-border)] px-3 py-2 text-oc-11 text-[var(--oc-text-muted)] bg-[var(--oc-surface-1)]">
                 <span>
                   第 {posPage} / {posPages} 页
                 </span>
@@ -490,17 +496,17 @@ export default function MasterDetailPanel({
           <div className="p-4 space-y-4">
             <div>
               <div className="flex items-center justify-between pb-2">
-                <span className="font-mono text-xs font-semibold text-[var(--oc-text-base)]">
+                <span className="font-mono text-oc-12 font-semibold text-[var(--oc-text-base)]">
                   7日收益曲线走势
                 </span>
-                <span className="font-mono text-xs font-bold oc-text-profit">
+                <span className="font-mono text-oc-12 font-bold oc-text-profit">
                   {trader.roi != null ? `${trader.roi >= 0 ? '+' : ''}${trader.roi.toFixed(1)}%` : ''}
                 </span>
               </div>
 
               {trader.equity_chart && trader.equity_chart.length > 0 ? (
-                <div className="rounded-lg border border-[var(--oc-border)] bg-[var(--oc-surface-1)] p-3">
-                  <div className="space-y-1.5 font-mono text-[11px]">
+                <div className="rounded-none border border-[var(--oc-border)] bg-[var(--oc-surface-1)] p-oc-3">
+                  <div className="space-y-1.5 font-mono text-oc-11">
                     {trader.equity_chart.map((pt, idx) => (
                       <div key={idx} className="flex items-center justify-between text-[var(--oc-text-muted)]">
                         <span>{fmtDateTime(pt.time)}</span>
@@ -517,7 +523,7 @@ export default function MasterDetailPanel({
                   </div>
                 </div>
               ) : (
-                <div className="py-8 text-center text-xs text-[var(--oc-text-faint)]">
+                <div className="py-8 text-center text-oc-12 text-[var(--oc-text-faint)]">
                   暂无收益曲线数据
                 </div>
               )}
@@ -545,23 +551,24 @@ export default function MasterDetailPanel({
               quotes.map((q) => (
                 <div
                   key={q.id}
-                  className="rounded-lg border border-[var(--oc-border)] bg-[var(--oc-surface-1)] p-3.5 space-y-2.5"
+                  data-testid="master-quote-card"
+                  className="rounded-none border border-[var(--oc-border)] bg-[var(--oc-surface-1)] p-oc-3 space-y-oc-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <Sparkles className="h-3.5 w-3.5 text-[var(--oc-accent)]" />
-                        <span className="font-bold text-[13px] text-[var(--oc-text-base)]">
+                        <Sparkles className="h-icon-action w-icon-action text-[var(--oc-accent)]" aria-hidden />
+                        <span className="font-bold text-oc-13 text-[var(--oc-text-base)]">
                           {q.author}
                         </span>
                       </div>
-                      <div className="text-[11px] text-[var(--oc-text-faint)]">{q.title}</div>
+                      <div className="text-oc-11 text-[var(--oc-text-faint)]">{q.title}</div>
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {q.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="rounded bg-[var(--oc-surface-2)] px-1.5 py-0.2 font-mono text-[10px] text-[var(--oc-text-muted)]"
+                          className="rounded-none bg-[var(--oc-surface-2)] px-1.5 py-0.5 font-mono text-oc-10 text-[var(--oc-text-muted)]"
                         >
                           {tag}
                         </span>
@@ -569,13 +576,13 @@ export default function MasterDetailPanel({
                     </div>
                   </div>
 
-                  <p className="text-[11px] leading-relaxed text-[var(--oc-text-muted)] bg-[var(--oc-surface-0)] p-2 rounded border border-[var(--oc-border)]">
+                  <p className="text-oc-11 leading-relaxed text-[var(--oc-text-muted)] bg-[var(--oc-surface-0)] p-oc-2 rounded-none border border-[var(--oc-border)]">
                     {q.summary}
                   </p>
 
                   <div className="space-y-1.5">
                     {q.quotes.map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-[11px] leading-relaxed">
+                      <div key={idx} className="flex items-start gap-2 text-oc-11 leading-relaxed">
                         <span className="text-[var(--oc-accent)] font-bold">›</span>
                         <span className="text-[var(--oc-text-base)]">{item}</span>
                       </div>

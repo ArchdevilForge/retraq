@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import ChartCanvas, { type ChartPriceLine } from './chart/ChartCanvas';
 import { useDataset } from '../context/DatasetContext';
@@ -11,17 +11,11 @@ import {
   fetchTradeFills,
 } from '../services/api';
 import type { ChartDrawing, DrawingKind, DrawingPoint, Kline, Trade, TradeFill, Timeframe } from '../services/api';
+import { TIMEFRAME_MS } from '../services/api';
 import { fmtPrice, isSyntheticFills } from '../utils/fills';
 import { readChartTheme } from '../utils/chartTheme';
 import { useToast } from './ToastHost';
 
-const TIMEFRAME_MS: Record<Timeframe, number> = {
-  '5m': 5 * 60 * 1000,
-  '15m': 15 * 60 * 1000,
-  '1h': 60 * 60 * 1000,
-  '4h': 4 * 60 * 60 * 1000,
-  '1d': 24 * 60 * 60 * 1000,
-};
 const TRADE_FETCH_BUFFER_BARS = 2026;
 const TRADE_VIEW_BUFFER_BARS = 200;
 const DEFAULT_COMPARE_SYMBOL = 'BTC-USDT';
@@ -185,6 +179,9 @@ interface Props {
   selfCompareTrades?: Trade[] | null;
   /** 工具栏最右预留槽宽度（透传 ChartCanvas）。 */
   toolbarSlotWidth?: number;
+  /** 详情卡「前往开仓时间」需把游标拉回开仓 bar：游标状态留在 ChartManager 内，
+      用 imperative handle 暴露单一定位动作，避免把 cursorSec 提升到页面级。 */
+  jumpRef?: MutableRefObject<(() => void) | null>;
 }
 
 /** 不请求尚未收盘的 K 线，否则缓存永远算不上覆盖，每次都回源交易所。仅可在 effect 内调用。 */
@@ -194,13 +191,23 @@ function clampRangeToClosed(range: { start: number; end: number } | null, tfMs: 
   return { start: range.start, end: Math.max(range.start, Math.min(range.end, lastClosedEnd)) };
 }
 
-function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrades, toolbarSlotWidth }: Props) {
+function ChartManager({
+  symbol,
+  selectedTrade,
+  noFills = false,
+  selfCompareTrades,
+  toolbarSlotWidth,
+  jumpRef,
+}: Props) {
   const { activeDatasetId } = useDataset();
   const { toast } = useToast();
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>('15m');
   const [tradeFills, setTradeFills] = useState<TradeFill[]>([]);
   const [tradeFillsError, setTradeFillsError] = useState(false);
   const [mainKlines, setMainKlines] = useState<Kline[]>([]);
+  // §2.3 藏未来（原训练模式的核心价值）：开启后只保留游标之前的 bar，
+  // 逐 bar 推进即“回放练习”。下单模拟已移除（0 产出的 4k 行引擎）。
+  const [hideFuture, setHideFuture] = useState(false);
   const [mainKlineLoading, setMainKlineLoading] = useState(false);
   const [mainKlineError, setMainKlineError] = useState<string | null>(null);
   const [compareKlines, setCompareKlines] = useState<Kline[] | null>(null);
@@ -212,6 +219,10 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
   // 复盘自由时间游标（§2.3）：持续可见。默认停在可见范围末根 bar；换标的/选持仓/
   // 换周期后若游标落在新窗口之外（屏外 = 隐形），拉回新窗口末根 bar。
   const [cursorSec, setCursorSec] = useState<number | null>(null);
+  // §2.3 回放传输：自动播放 + 倍速（根/秒） + 单步步进（bar 数）
+  const [playing, setPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(8);
+  const [stepBars, setStepBars] = useState(1);
 
   const rangeForTrade = useMemo(() => {
     if (!selectedTrade) return null;
@@ -237,36 +248,115 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
     return { from: align(rawStartSec, 'floor') as Time, to: align(rawEndSec, 'ceil') as Time };
   }, [activeTimeframe, selectedTrade]);
 
-  // 复盘自由时间游标（§2.3）：持续可见。默认停在可见范围末根 bar；换标的/选持仓/
-  // 换周期后若游标落在新窗口之外（屏外 = 隐形），拉回新窗口末根 bar。
+  // 复盘自由时间游标（§2.3）：持续可见。默认位置——
+  //   选中持仓时 = 该笔开仓 bar（复盘的决策时刻，也是对标工具的「前往开仓时间」默认行为）；
+  //   未选中时   = 可见范围末根 bar。
+  // 游标一旦被用户挪出（单步/拖动），本 effect 不再拉回，除非换了标的/持仓/周期。
+  // 已为哪笔持仓落过「开仓位」；只在**真的找到开仓 bar** 时置位，否则新数据到达后
+  // （选中瞬间图里还是上一笔/上一个标的的 K 线）会被误判为已落位而永不跳转。
+  const entryAnchoredForRef = useRef<string | null>(null);
   useEffect(() => {
     if (mainKlines.length === 0) return;
     const vr = visibleRange;
     const inView = vr
       ? mainKlines.filter((k) => k.time >= Number(vr.from) && k.time <= Number(vr.to))
       : mainKlines;
+    // 游标已在可见窗内 → 用户在看它，不打扰（这是「用户挪开后不被拉回」的实现）
     if (cursorSec != null && inView.some((k) => k.time === cursorSec)) return;
+
+    if (selectedTrade) {
+      const tradeKey = `t${selectedTrade.id}:${activeTimeframe}`;
+      if (entryAnchoredForRef.current === tradeKey) return; // 已跳过一次，尊重用户后续挪动
+      const entrySec = Math.floor(selectedTrade.entry_time / 1000);
+      const stepSec = Math.floor(TIMEFRAME_MS[activeTimeframe] / 1000);
+      const entryBar = mainKlines.find((k) => k.time >= entrySec - stepSec && k.time <= entrySec + stepSec);
+      if (entryBar) {
+        entryAnchoredForRef.current = tradeKey; // 只在成功落位后置位
+        setCursorSec(entryBar.time);
+        return;
+      }
+      // 数据还没切到这笔持仓的窗口 → 什么都不做，等新 klines 到达再试
+      return;
+    }
     const last = inView[inView.length - 1] ?? mainKlines[mainKlines.length - 1];
     setCursorSec(last.time);
-  }, [mainKlines, cursorSec, visibleRange]);
+  }, [mainKlines, cursorSec, visibleRange, selectedTrade, symbol, activeTimeframe]);
 
-  // 复盘快捷键（评审定稿最小集）：←/→ 游标退/进一根 bar；输入聚焦时不劫持
+  /** 详情卡「前往开仓时间」：把游标拉回该笔的开仓 bar。 */
+  const jumpToTradeEntry = useCallback(() => {
+    if (!selectedTrade || mainKlines.length === 0) return;
+    const entrySec = Math.floor(selectedTrade.entry_time / 1000);
+    const stepSec = Math.floor(TIMEFRAME_MS[activeTimeframe] / 1000);
+    const bar = mainKlines.find((k) => k.time >= entrySec - stepSec && k.time <= entrySec + stepSec);
+    if (bar) {
+      entryAnchoredForRef.current = `t${selectedTrade.id}:${activeTimeframe}`;
+      setPlaying(false);
+      setCursorSec(bar.time);
+    }
+  }, [selectedTrade, mainKlines, activeTimeframe]);
+
+  // 暴露给详情卡（RefObject 单槽，无订阅成本）
+  useEffect(() => {
+    if (!jumpRef) return;
+    jumpRef.current = selectedTrade ? jumpToTradeEntry : null;
+    return () => {
+      jumpRef.current = null;
+    };
+  }, [jumpRef, selectedTrade, jumpToTradeEntry]);
+
+  /** 游标索引（不在数据里时落在末根）。 */
+  const cursorIndex = useMemo(() => {
+    if (cursorSec == null || mainKlines.length === 0) return -1;
+    const i = mainKlines.findIndex((k) => k.time === cursorSec);
+    return i === -1 ? mainKlines.length - 1 : i;
+  }, [cursorSec, mainKlines]);
+
+  /** 单步 ±N 根（transport 按钮、键盘、自动播放共用此唯一入口，避免边界分叉）。 */
+  const stepCursor = useCallback(
+    (dir: 1 | -1, bars = stepBars) => {
+      if (cursorIndex < 0) return false;
+      const next = cursorIndex + dir * bars;
+      const clamped = Math.min(mainKlines.length - 1, Math.max(0, next));
+      setCursorSec(mainKlines[clamped].time);
+      return clamped !== cursorIndex; // false = 已到边界，自动播放据此停止
+    },
+    [cursorIndex, mainKlines, stepBars],
+  );
+
+  // 复盘快捷键（§2.3）：←/→ 单步；Shift+↓ 播放/暂停；输入聚焦时不劫持
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return;
-      if (cursorSec == null || mainKlines.length === 0) return;
+      if (e.key === 'ArrowDown' && e.shiftKey) {
+        e.preventDefault();
+        setPlaying((v) => !v);
+        return;
+      }
+      if (e.shiftKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (cursorIndex < 0) return;
       e.preventDefault();
-      const i = mainKlines.findIndex((k) => k.time === cursorSec);
-      const cur = i === -1 ? mainKlines.length - 1 : i;
-      const next = Math.min(mainKlines.length - 1, Math.max(0, cur + (e.key === 'ArrowRight' ? 1 : -1)));
-      setCursorSec(mainKlines[next].time);
+      stepCursor(e.key === 'ArrowRight' ? 1 : -1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cursorSec, mainKlines]);
+  }, [cursorIndex, stepCursor]);
+
+  // §2.3 自动播放：按 playSpeed（根/秒）推进；到达末根自动停止。
+  useEffect(() => {
+    if (!playing) return;
+    if (cursorIndex < 0) return;
+    if (cursorIndex >= mainKlines.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (!stepCursor(1)) setPlaying(false);
+    }, Math.max(50, 1000 / playSpeed));
+    return () => window.clearInterval(id);
+  }, [playing, playSpeed, stepCursor, cursorIndex, mainKlines.length]);
 
   useEffect(() => {
     const tradeId = selectedTrade?.id;
@@ -415,25 +505,46 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
     [selectedTrade, tradeFills, activeTimeframe],
   );
 
+  // 藏未来：游标之后的 K 线不入图（游标后的标记/画线自然不可见）
+  const displayKlines = useMemo(() => {
+    if (!hideFuture || cursorSec == null) return mainKlines;
+    const upTo = mainKlines.filter((k) => k.time <= cursorSec);
+    return upTo.length > 0 ? upTo : mainKlines;
+  }, [hideFuture, cursorSec, mainKlines]);
+
   // 他我对照：self 圆点与高手箭头按时间归并（P§五.2）
   const mergedMarkers = useMemo(() => {
     const mine = selfCompareTrades?.length ? buildSelfCompareMarkers(selfCompareTrades, activeTimeframe) : [];
-    if (mine.length === 0) return overlay.markers;
-    return [...overlay.markers, ...mine].sort((a, b) => Number(a.time) - Number(b.time));
-  }, [overlay, selfCompareTrades, activeTimeframe]);
+    const all = mine.length === 0
+      ? overlay.markers
+      : [...overlay.markers, ...mine].sort((a, b) => Number(a.time) - Number(b.time));
+    // 藏未来时标记一并截断（否则未来成交价会泄露）
+    if (hideFuture && cursorSec != null) return all.filter((m) => Number(m.time) <= cursorSec);
+    return all;
+  }, [overlay, selfCompareTrades, activeTimeframe, hideFuture, cursorSec]);
+
+  // §2.3 藏未来时的位置指示（原训练模式的 50/672 计数）：可断言、可感知进度
+  const futureCount = useMemo(() => {
+    if (!hideFuture || cursorSec == null || mainKlines.length === 0) return null;
+    const shown = mainKlines.filter((k) => k.time <= cursorSec).length;
+    return { shown, total: mainKlines.length };
+  }, [hideFuture, cursorSec, mainKlines]);
+
+/** 开启藏未来时游标至少回退这么多根，保证有未来可逐根揭示。 */
+const HIDE_FUTURE_LOOKBACK_BARS = 60;
 
   const status = selectedTrade ? (
     <>
       {tradeFillsError && (
-        <span className="ml-2 text-[12px] oc-text-loss" role="alert">
+        <span className="ml-2 text-oc-12 oc-text-loss" role="alert">
           成交明细加载失败，K 线标注不完整
         </span>
       )}
       {mainKlines.length > 0 && tradeFills.length > 0 && (
-        <span className="ml-2 text-[12px] oc-text-faint">成交 {tradeFills.length} 笔 → K 线标注</span>
+        <span className="ml-2 text-oc-12 oc-text-faint">成交 {tradeFills.length} 笔 → K 线标注</span>
       )}
       {mainKlines.length > 0 && !tradeFillsError && tradeFills.length === 0 && !noFills && (
-        <span className="ml-2 text-[12px] oc-text-brand">无成交明细，仅均价线；请用交易历史模板重新导入</span>
+        <span className="ml-2 text-oc-12 oc-text-brand">无成交明细，仅均价线；请用交易历史模板重新导入</span>
       )}
     </>
   ) : null;
@@ -442,12 +553,27 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
     <ChartCanvas
       symbol={selectedTrade?.symbol || symbol}
       timeframe={activeTimeframe}
-      klines={mainKlines}
+      klines={displayKlines}
       loading={mainKlineLoading}
       error={mainKlineError}
       status={status}
       markers={mergedMarkers}
-      priceLines={overlay.priceLines}
+      priceLines={hideFuture ? [] : overlay.priceLines}
+      hideFuture={hideFuture}
+      onToggleHideFuture={() => {
+        setHideFuture((v) => {
+          const next = !v;
+          // 开启时若游标已在末端（默认位置），回退若干根，否则无未来可揭示
+          if (next && mainKlines.length > 0 && cursorSec != null) {
+            const i = mainKlines.findIndex((k) => k.time === cursorSec);
+            const cur = i === -1 ? mainKlines.length - 1 : i;
+            const target = Math.max(0, cur - HIDE_FUTURE_LOOKBACK_BARS);
+            if (target < cur) setCursorSec(mainKlines[target].time);
+          }
+          return next;
+        });
+      }}
+      futureCount={futureCount}
       visibleRange={visibleRange}
       drawings={drawings}
       onUserDrawing={handleUserDrawing}
@@ -459,6 +585,13 @@ function ChartManager({ symbol, selectedTrade, noFills = false, selfCompareTrade
       onTimeframeChange={setActiveTimeframe}
       cursorTime={cursorSec}
       onCursorDrag={setCursorSec}
+      onStepCursor={stepCursor}
+      playing={playing}
+      onTogglePlay={() => setPlaying((v) => !v)}
+      playSpeed={playSpeed}
+      onPlaySpeedChange={setPlaySpeed}
+      stepBars={stepBars}
+      onStepBarsChange={setStepBars}
       toolbarSlotWidth={toolbarSlotWidth}
     />
   );

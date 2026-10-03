@@ -2,7 +2,7 @@
 
 import pytest
 
-from models import ChartDrawing, TradeAnnotation
+from models import ChartDrawing, Dataset, Trade, TradeAnnotation
 
 
 def test_annotation_get_returns_default_shape(client, db_session):
@@ -142,3 +142,27 @@ def test_drawing_validates_shape(client):
         json={"symbol": "BTC-USDT", "kind": "hline", "payload": [{"time_ms": 1, "price": 0}]},
     )
     assert res_zero.status_code == 400
+
+
+def test_annotation_rejects_unknown_grade(client, db_session):
+    """评分 is a closed set (A+ | A | B | C); else the analysis buckets grow junk."""
+    res = client.put("/api/annotations/trade/11", json={"grade": "Z"})
+    assert res.status_code == 400
+    assert db_session.query(TradeAnnotation).filter(TradeAnnotation.subject_id == 11).count() == 0
+
+
+def test_deleting_a_dataset_drops_its_annotations(client, db_session):
+    """(subject_type, subject_id) cannot cascade, so the delete path must clean up."""
+    ds = Dataset(name="annotated")
+    db_session.add(ds)
+    db_session.commit()
+    trade = Trade(
+        dataset_id=ds.id, symbol="BTC-USDT", direction="long", entry_price=100.0, entry_time=1
+    )
+    db_session.add(trade)
+    db_session.commit()
+    client.put(f"/api/annotations/trade/{trade.id}", json={"note": "doomed"})
+    assert db_session.query(TradeAnnotation).count() == 1
+
+    assert client.delete(f"/api/datasets/{ds.id}").status_code == 200
+    assert db_session.query(TradeAnnotation).count() == 0

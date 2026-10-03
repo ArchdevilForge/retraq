@@ -11,6 +11,7 @@ from models import (
     ChartDrawing,
     TradeAnnotation,
 )
+from time_utils import iso_utc
 
 VALID_SUBJECTS = (SUBJECT_TRADE, SUBJECT_MASTER_POSITION)
 
@@ -106,7 +107,10 @@ class AnnotationService:
             setattr(row, "error_tags", _tags_json(fields["error_tags"]))
         if "grade" in fields:
             grade = fields["grade"]
-            setattr(row, "grade", str(grade).strip() if grade else None)
+            value = str(grade).strip() if grade else None
+            if value is not None and value not in GRADE_PRESETS:
+                raise ValidationError(f"Unknown grade: {value}. Supported: {list(GRADE_PRESETS)}")
+            setattr(row, "grade", value)
         if "emotion" in fields:
             emotion = fields["emotion"]
             setattr(row, "emotion", str(emotion).strip() if emotion else None)
@@ -136,6 +140,26 @@ class AnnotationService:
             .all()
         )
         return [AnnotationService._drawing_to_dict(r) for r in rows]
+
+    @staticmethod
+    def delete_annotations_for_trades(db: Session, trade_ids: list[int]) -> int:
+        """Drop annotations of trades that are about to disappear.
+
+        trade_annotations binds its subject by (subject_type, subject_id), so SQLite has no
+        foreign key to cascade through; without this a deleted dataset leaves its notes behind
+        forever.
+        """
+        if not trade_ids:
+            return 0
+        deleted = (
+            db.query(TradeAnnotation)
+            .filter(
+                TradeAnnotation.subject_type == SUBJECT_TRADE,
+                TradeAnnotation.subject_id.in_(trade_ids),
+            )
+            .delete(synchronize_session=False)
+        )
+        return int(deleted)
 
     @staticmethod
     def create_drawing(db: Session, symbol: str, kind: str, payload: list[dict]) -> dict:
@@ -182,7 +206,7 @@ class AnnotationService:
             "emotion": row.emotion,
             "planned_stop": row.planned_stop,
             "planned_target": row.planned_target,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "updated_at": iso_utc(row.updated_at),
         }
 
     @staticmethod
@@ -196,7 +220,7 @@ class AnnotationService:
             "symbol": row.symbol,
             "kind": row.kind,
             "payload": payload,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": iso_utc(row.created_at),
         }
 
 

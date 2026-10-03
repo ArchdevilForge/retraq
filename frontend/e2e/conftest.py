@@ -29,7 +29,7 @@ DB_PATH = Path(__file__).resolve().parents[2] / "backend" / "trading.db"
 # allowed CDN (DESIGN §4 font stack). Anything else is aborted and recorded.
 _ALLOWED_HOSTS = ("localhost", "127.0.0.1", "fonts.googleapis.com", "fonts.gstatic.com")
 
-# 交割单 template (langge) — documented in /api/import/templates.
+# 交割单 template (langge) — auto-detected from the 「交易对」header row.
 SELF_CSV = (
     "交易对,方向,杠杆倍数,开仓均价,平仓均价,收益率,收益 (USDT),保证金（最大时）,买入时间,卖出时间\n"
     "ETH-USDT,做多,10,3000,3150,0.05,150,3000,2026-08-10 10:00:00,2026-08-10 18:00:00\n"

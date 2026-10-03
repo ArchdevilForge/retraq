@@ -5,7 +5,6 @@ import ChartManager from '../components/ChartManager';
 import EmptyDataset from '../components/EmptyDataset';
 import PositionDetails from '../components/PositionDetails';
 import TradeList from '../components/TradeList';
-import DailyReview from '../components/replay/DailyReview';
 import MasterList from '../components/masters/MasterList';
 import MasterDetailPanel from '../components/masters/MasterDetailPanel';
 import { useDataset } from '../context/DatasetContext';
@@ -57,6 +56,8 @@ export default function ReplayPage() {
   const listRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
+  // 「前往开仓时间」：游标状态留在 ChartManager 内，页面只持有单一定位 handle。
+  const chartJumpRef = useRef<(() => void) | null>(null);
 
   const masterTrade = useMemo(
     () => (selectedPosition ? masterPositionToTrade(selectedPosition) : null),
@@ -254,10 +255,10 @@ export default function ReplayPage() {
           title="我的交易列表"
           aria-label="打开持仓列表"
           aria-expanded={listOpen && source === 'mine'}
-          className={`oc-btn oc-btn--sm h-7 gap-1.5 px-2.5 text-[12px] ${listOpen && source === 'mine' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
+          className={`oc-btn oc-btn--sm gap-1.5 px-2.5 text-oc-12 ${listOpen && source === 'mine' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
           onClick={() => openList('mine')}
         >
-          <ListFilter className="h-3.5 w-3.5" aria-hidden />
+          <ListFilter className="h-icon-action w-icon-action" aria-hidden />
           交易
         </button>
         <button
@@ -265,13 +266,12 @@ export default function ReplayPage() {
           title="合约高手榜"
           aria-label="打开高手列表"
           aria-expanded={listOpen && source === 'masters'}
-          className={`oc-btn oc-btn--sm h-7 gap-1.5 px-2.5 text-[12px] ${listOpen && source === 'masters' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
+          className={`oc-btn oc-btn--sm gap-1.5 px-2.5 text-oc-12 ${listOpen && source === 'masters' ? 'oc-btn--primary' : 'oc-btn--ghost'}`}
           onClick={() => openList('masters')}
         >
-          <Trophy className="h-3.5 w-3.5" aria-hidden />
+          <Trophy className="h-icon-action w-icon-action" aria-hidden />
           高手
         </button>
-        <DailyReview />
       </div>
     ),
     [listOpen, source, openList],
@@ -307,7 +307,8 @@ export default function ReplayPage() {
               selectedTrade={activeTrade}
               noFills={source === 'masters'}
               selfCompareTrades={source === 'masters' && compareOpen ? selfCompareTrades : null}
-              toolbarSlotWidth={248}
+              toolbarSlotWidth={190}
+              jumpRef={chartJumpRef}
             />
           ) : noDataset ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
@@ -321,7 +322,7 @@ export default function ReplayPage() {
             <div className="oc-empty">
               <p className="oc-empty__title">持仓统计加载失败</p>
               <p className="oc-empty__desc">确认后端已启动后重试</p>
-              <button type="button" className="oc-btn oc-btn--secondary mt-3" onClick={retrySymbolPick}>
+              <button type="button" className="oc-btn oc-btn--secondary" onClick={retrySymbolPick}>
                 重试
               </button>
             </div>
@@ -335,7 +336,8 @@ export default function ReplayPage() {
         {/* 工具栏右侧按钮层：覆盖在预留槽上（§2.4 TV 顶栏式入口）；z 高于列表弹窗背板，随时可切换/收起 */}
         <div
           ref={toolbarRef}
-          className="absolute right-[10px] top-[13px] z-[80] max-lg:bottom-9 max-lg:left-auto max-lg:right-2 max-lg:top-auto"
+          className="absolute right-[10px] top-[13px] max-lg:bottom-9 max-lg:left-auto max-lg:right-2 max-lg:top-auto"
+          style={{ zIndex: 'var(--oc-z-toolbar)' }}
         >
           {toolbarButtons}
         </div>
@@ -344,7 +346,8 @@ export default function ReplayPage() {
         <div
           key="list-modal-backdrop"
           ref={listRef}
-          className={`fixed inset-0 z-[70] flex items-start justify-center bg-black/60 pt-[7vh]${listOpen ? '' : ' hidden'}`}
+          className={`fixed inset-0 flex items-start justify-center bg-black/60 pt-[7vh]${listOpen ? '' : ' hidden'}`}
+          style={{ zIndex: 'var(--oc-z-modal)' }}
           aria-hidden={!listOpen}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setListOpen(false);
@@ -400,7 +403,11 @@ export default function ReplayPage() {
         {detailOpen && (source === 'masters' ? selectedTrader : selectedTrade) ? (
           <div key="detail-card" ref={detailRef} className="oc-float-panel oc-float-panel--right">
             {source === 'mine' ? (
-              <PositionDetails trade={selectedTrade} onHide={() => setDetailOpen(false)} />
+              <PositionDetails
+                trade={selectedTrade}
+                onHide={() => setDetailOpen(false)}
+                onJumpToEntry={() => chartJumpRef.current?.()}
+              />
             ) : (
               <MasterDetailPanel
                 trader={selectedTrader}
@@ -416,7 +423,8 @@ export default function ReplayPage() {
         {source === 'masters' && activeTrade && selfCompareTrades ? (
           <div
             key="compare-chip"
-            className="panel-card absolute left-1/2 top-[62px] z-[76] flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-[12px]"
+            className="panel-card absolute left-1/2 top-[62px] flex -translate-x-1/2 items-center gap-2 px-3 py-1.5 text-oc-12"
+            style={{ zIndex: 'var(--oc-z-prompt)' }}
             data-testid="self-compare-chip"
           >
             <span className="oc-text-faint">同期我的持仓</span>

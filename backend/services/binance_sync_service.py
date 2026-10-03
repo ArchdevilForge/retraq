@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 SYNC_DATASET_NAME = "币安合约 (自动同步)"
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-# userTrades look back at most ~6 months per query; fetch in bounded page runs.
+# userTrades/income look back at most ~6 months per query; fetch in bounded page runs.
 MAX_PAGE_RUNS = 40
 PAGE_LIMIT = 500
+INCOME_LOOKBACK_MS = 180 * 24 * 3600 * 1000
 
 
 def _read_env_file() -> dict[str, str]:
@@ -95,6 +96,22 @@ def _fetch_symbol_fills(exchange, symbol: str, since_ms: int) -> list[dict]:
 def _synced_symbols(db: Session, dataset_id: int) -> list[str]:
     rows = db.query(TradeFill.symbol).filter(TradeFill.dataset_id == dataset_id).distinct().all()
     return [r[0] for r in rows]
+
+
+def _fetch_income(exchange, since_ms: int) -> list[dict]:
+    """Fetch account income across ccxt versions.
+
+    ccxt 4.5.32 exposes Binance's signed income endpoint as a raw method,
+    not the unified ``fetch_income`` used by older integrations.
+    """
+    unified = getattr(exchange, "fetch_income", None)
+    if callable(unified):
+        return unified(since=since_ms, limit=PAGE_LIMIT) or []
+
+    raw = getattr(exchange, "fapiPrivateGetIncome", None)
+    if not callable(raw):
+        raise AttributeError("Binance exchange has no income history method")
+    return raw({"startTime": since_ms, "limit": PAGE_LIMIT}) or []
 
 
 def _rebuild_trades(db: Session, dataset: Dataset) -> int:
@@ -185,7 +202,8 @@ class BinanceSyncService:
         # form (BTC-USDT) and the ccxt unified form (BTC/USDT:USDT).
         symbols: dict[str, str] = {_to_ccxt_symbol(s): s for s in _synced_symbols(db, int(dataset.id))}
         try:
-            incomes = exchange.fetch_income(since=fetch_since, limit=PAGE_LIMIT) or []
+            income_since = max(fetch_since, int(time.time() * 1000) - INCOME_LOOKBACK_MS)
+            incomes = _fetch_income(exchange, income_since)
             for entry in incomes:
                 raw = str(entry.get("symbol") or "")
                 sym = normalize_symbol(raw.split(":")[0])

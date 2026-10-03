@@ -15,8 +15,8 @@ from playwright.sync_api import Page, expect
 BASE_URL = "http://localhost:5173"
 API_URL = "http://localhost:9527"
 
-NAV_TABS = ("复盘", "训练", "分析")  # DESIGN §2.5 / PRODUCT §九
-PAGES = ("/replay", "/train", "/analysis")
+NAV_TABS = ("复盘", "分析")  # DESIGN §2.5 / PRODUCT §九（训练已移除）
+PAGES = ("/replay", "/analysis")
 VIEWPORTS = ((1440, 900), (1280, 800), (768, 900), (554, 800), (390, 800))
 FONT_STACK = "IBM Plex Mono"  # DESIGN §4.1
 
@@ -164,12 +164,12 @@ def assert_tabular_nums(page: Page, min_count: int = 1) -> None:
 
 
 def assert_nav_three_tabs(page: Page) -> None:
-    """DESIGN §2.5 / PRODUCT §九 — exactly 复盘/训练/分析."""
+    """DESIGN §2.5 / PRODUCT §九 — 顶栏仅 复盘/分析（训练模式已移除）。"""
     nb = navbar(page)
     for t in NAV_TABS:
         expect(nb.get_by_text(t, exact=True)).to_be_visible()
     tabs = nb.locator(".oc-tab")
-    assert tabs.count() == 3, f"nav must have exactly 3 tabs, got {tabs.count()}"
+    assert tabs.count() == len(NAV_TABS), f"nav must have exactly {len(NAV_TABS)} tabs, got {tabs.count()}"
 
 
 def assert_theme(page: Page, expected: str) -> None:

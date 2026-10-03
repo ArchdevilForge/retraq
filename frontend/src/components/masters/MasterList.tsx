@@ -72,7 +72,7 @@ const TraderRow = memo(function TraderRow({
     >
       <div className="flex w-full items-center justify-between gap-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md border border-[var(--oc-border)] bg-[var(--oc-surface-1)]">
+          <div className="relative h-control-lg w-control-lg shrink-0 overflow-hidden rounded-none border border-[var(--oc-border)] bg-[var(--oc-surface-1)]">
             {hasAvatar ? (
               <img
                 src={trader.avatar_url!}
@@ -84,13 +84,13 @@ const TraderRow = memo(function TraderRow({
                 }}
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center font-mono text-xs font-semibold text-[var(--oc-text-faint)]">
+              <div className="flex h-full w-full items-center justify-center font-mono text-oc-12 font-semibold text-[var(--oc-text-faint)]">
                 {trader.nickname.slice(0, 1).toUpperCase()}
               </div>
             )}
             {trader.badge && (
               <span
-                className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--oc-accent)] text-[9px] text-[var(--oc-bg)]"
+                className="absolute -bottom-1 -right-1 flex h-icon-tool w-icon-tool items-center justify-center rounded-pill bg-[var(--oc-accent)] text-oc-10 text-[var(--oc-bg)]"
                 title={trader.badge}
               >
                 ★
@@ -100,16 +100,16 @@ const TraderRow = memo(function TraderRow({
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-[13px] font-medium text-[var(--oc-text-base)]">
+              <span className="truncate text-oc-13 font-medium text-[var(--oc-text-base)]">
                 {trader.nickname}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-[var(--oc-text-faint)]">
+            <div className="flex items-center gap-2 text-oc-11 text-[var(--oc-text-faint)]">
               {trader.win_rate != null && (
                 <span>胜率 {trader.win_rate.toFixed(0)}%</span>
               )}
               {trader.position_count > 0 && (
-                <span className="rounded bg-[var(--oc-surface-2)] px-1 py-0.2 font-mono text-[10px]">
+                <span className="rounded-none bg-[var(--oc-surface-2)] px-oc-1 py-0.5 font-mono text-oc-10">
                   {trader.position_count} 笔仓位
                 </span>
               )}
@@ -121,13 +121,13 @@ const TraderRow = memo(function TraderRow({
           <Sparkline points={trader.equity_chart} />
           <div>
             <div
-              className={`font-mono text-[13px] font-semibold tabular-nums ${
+              className={`font-mono text-oc-13 font-semibold tabular-nums ${
                 isPositive ? 'oc-text-profit' : 'oc-text-loss'
               }`}
             >
               {trader.roi != null ? (trader.roi >= 0 ? `+${trader.roi.toFixed(1)}%` : `${trader.roi.toFixed(1)}%`) : '—'}
             </div>
-            <div className="font-mono text-[11px] text-[var(--oc-text-faint)] tabular-nums">
+            <div className="font-mono text-oc-11 text-[var(--oc-text-faint)] tabular-nums">
               {trader.pnl != null ? fmtMoney(trader.pnl) : '—'}
             </div>
           </div>
@@ -183,10 +183,10 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
       <div className="shrink-0 border-b border-[var(--oc-border)] p-3">
         <div className="flex items-center justify-between pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-semibold tracking-wide text-[var(--oc-text-base)]">
+            <span className="font-mono text-oc-13 font-semibold tracking-wide text-[var(--oc-text-base)]">
               合约高手榜
             </span>
-            <span className="rounded bg-[var(--oc-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--oc-text-faint)]">
+            <span className="rounded-none bg-[var(--oc-surface-2)] px-1.5 py-0.5 font-mono text-oc-11 text-[var(--oc-text-faint)]">
               {total} 位
             </span>
           </div>
@@ -194,10 +194,11 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
 
         {/* Search */}
         <div className="relative mb-2">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--oc-text-faint)]" />
+          <Search className="absolute left-2.5 top-1/2 h-icon-action w-icon-action -translate-y-1/2 text-[var(--oc-text-faint)]" aria-hidden />
           <input
             type="text"
-            className="oc-input pl-8 text-[12px]"
+            aria-label="搜索交易员昵称或 ID"
+            className="oc-input pl-8 text-oc-12"
             placeholder="搜索交易员昵称或 ID…"
             value={search}
             onChange={(e) => {
@@ -208,7 +209,7 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
         </div>
 
         {/* Filters & Sort */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 text-oc-11">
           <label className="flex cursor-pointer items-center gap-1.5 text-[var(--oc-text-muted)] select-none">
             <input
               type="checkbox"
@@ -224,7 +225,8 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
 
           <div className="flex items-center gap-1">
             <select
-              className="oc-select text-[12px]"
+              aria-label="高手榜单排序"
+              className="oc-select text-oc-12"
               value={sortBy}
               onChange={(e) => {
                 setSortBy(e.target.value as SortKey);
@@ -258,7 +260,7 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
         )}
 
         {error && (
-          <div className="p-4 text-center text-xs oc-text-loss">
+          <div className="p-4 text-center text-oc-12 oc-text-loss">
             <p>{error}</p>
             <button
               type="button"
@@ -271,7 +273,7 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
         )}
 
         {!loading && !error && traders.length === 0 && (
-          <div className="py-12 text-center text-xs text-[var(--oc-text-faint)]">
+          <div className="py-12 text-center text-oc-12 text-[var(--oc-text-faint)]">
             未找到符合条件的合约交易员
           </div>
         )}
@@ -292,7 +294,7 @@ export default function MasterList({ selectedTrader, onSelectTrader }: Props) {
 
       {/* Pagination Footer */}
       {totalPages > 1 && (
-        <div className="flex shrink-0 items-center justify-between border-t border-[var(--oc-border)] px-3 py-2 text-[11px] text-[var(--oc-text-muted)]">
+        <div className="flex shrink-0 items-center justify-between border-t border-[var(--oc-border)] px-3 py-2 text-oc-11 text-[var(--oc-text-muted)]">
           <span>
             第 {page} / {totalPages} 页
           </span>

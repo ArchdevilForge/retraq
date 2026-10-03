@@ -29,7 +29,7 @@ export function BarRow({
     return (
       <button
         type="button"
-        className="flex w-full cursor-pointer items-center gap-2 text-left text-[12px] transition-colors hover:bg-[var(--surface-base-hover)]"
+        className="oc-bar-row"
         title={title ?? `复盘 ${label}`}
         onClick={onClick}
       >
@@ -44,7 +44,7 @@ export function BarRow({
     );
   }
   return (
-    <div className="flex items-center gap-2 text-[12px]" title={title}>
+    <div className="oc-bar-row cursor-default" title={title}>
       <span className="w-24 shrink-0 truncate font-mono" title={label}>
         {label}
       </span>

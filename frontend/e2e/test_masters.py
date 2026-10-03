@@ -118,7 +118,7 @@ def test_master_source_switch_and_delivery_slip_linkage(browser, seed):
         page.get_by_role("button", name="心法").click()
         panel = page.locator(".oc-float-panel--right")
         expect(
-            panel.get_by_text("加载合约心法中…").or_(panel.locator("div.rounded-lg")).first
+            panel.get_by_text("加载合约心法中…").or_(panel.locator("[data-testid='master-quote-card']")).first
         ).to_be_visible(timeout=10000)
         assert_console_clean(page._console_errors)
     finally:

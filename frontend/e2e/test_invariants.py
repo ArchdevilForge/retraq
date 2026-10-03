@@ -1,6 +1,6 @@
 """Layer 1 — layout invariants across pages × themes × viewports.
 
-Grid: {/replay, /train, /analysis} × {dark, light} × {1440×900, 1280×800}.
+Grid: {/replay, /analysis} × {dark, light} × {1440×900, 1280×800}.
 Each assertion cites its clause; see CONSTRAINT-MATRIX.md.
 """
 
@@ -39,7 +39,7 @@ TOKENS = {
 # tabular-nums minimum per page: train shows no numbers until a run starts;
 # replay keeps its numbers inside the closed-by-default list popover (§2.4),
 # which the popover test asserts instead.
-TABULAR_MIN = {"/replay": 0, "/analysis": 1, "/train": 0}
+TABULAR_MIN = {"/replay": 0, "/analysis": 1}
 
 
 @pytest.mark.parametrize("w,h", VIEWPORTS)

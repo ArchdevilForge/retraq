@@ -10,6 +10,7 @@ import {
   fetchTrades,
   fetchTradesWithTotal,
   importTrades,
+  invalidateSymbolStats,
   updateDataset,
 } from './api';
 import type { KlineApiRow, Trade, TradesResponse } from './api';
@@ -80,6 +81,7 @@ function createStorage(): Storage {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  invalidateSymbolStats();
   vi.stubGlobal('localStorage', createStorage());
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -414,5 +416,43 @@ describe('Master Traders API', () => {
     const res = await (await import('./api')).fetchMasterQuotes();
     expect(res).toEqual(payload.data);
     expect(urlAt(0)).toBe('/api/masters/quotes');
+  });
+});
+
+describe('symbol stats sharing', () => {
+  const stats = { trade_count: 2, symbol_distribution: { 'ETH-USDT': 2 } };
+
+  beforeEach(() => {
+    localStorage.setItem(ACTIVE_DATASET_STORAGE_KEY, '7');
+    fetchMock.mockResolvedValue(jsonResponse(stats));
+  });
+
+  it('serves the page\'s three consumers from one request', async () => {
+    const [a, b] = await Promise.all([fetchSymbolStats(), fetchSymbolStats()]);
+    const c = await fetchSymbolStats();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toEqual(stats);
+    expect(b).toEqual(stats);
+    expect(c).toEqual(stats);
+  });
+
+  it('refetches after invalidation and after a dataset switch', async () => {
+    await fetchSymbolStats();
+    invalidateSymbolStats();
+    await fetchSymbolStats();
+    localStorage.setItem(ACTIVE_DATASET_STORAGE_KEY, '8');
+    await fetchSymbolStats();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not cache a failure, so retry really retries', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'boom' }, 500));
+    await expect(fetchSymbolStats()).rejects.toThrow();
+
+    fetchMock.mockResolvedValue(jsonResponse(stats));
+    await expect(fetchSymbolStats()).resolves.toEqual(stats);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

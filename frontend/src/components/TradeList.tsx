@@ -38,23 +38,23 @@ const TradeRow = memo(function TradeRow({
     >
       <span className="flex min-w-0 items-center gap-2.5">
         <span
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-md ${
+          className={`grid h-control-md w-control-md shrink-0 place-items-center rounded-none ${
             trade.direction === 'long' ? 'oc-surface-success' : 'oc-surface-error'
           }`}
         >
           {trade.direction === 'long' ? (
-            <TrendingUp className="h-4 w-4" aria-hidden />
+            <TrendingUp className="h-icon-tool w-icon-tool" aria-hidden />
           ) : (
-            <TrendingDown className="h-4 w-4" aria-hidden />
+            <TrendingDown className="h-icon-tool w-icon-tool" aria-hidden />
           )}
         </span>
         <span className="min-w-0">
-          <span className="block truncate font-mono text-[14px]">{trade.symbol}</span>
-          <span className="block truncate text-[12px] oc-text-faint">{fmtDateTime(trade.entry_time)}</span>
+          <span className="block truncate font-mono text-oc-14">{trade.symbol}</span>
+          <span className="block truncate text-oc-12 oc-text-faint">{fmtDateTime(trade.entry_time)}</span>
         </span>
       </span>
       <span
-        className={`shrink-0 text-[14px] font-medium tabular-nums ${
+        className={`shrink-0 text-oc-14 font-medium tabular-nums ${
           trade.profit == null ? 'oc-text-faint' : profitPositive ? 'oc-text-profit' : 'oc-text-loss'
         }`}
       >
@@ -168,11 +168,11 @@ function TradeList({ onSelectTrade, onSymbolChange }: Props) {
       <header className="panel-header shrink-0 space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="oc-panel__title">交易列表</h2>
-          <span className="font-mono text-[13px] tabular-nums oc-text-faint">{totalCount} 笔</span>
+          <span className="font-mono text-oc-13 tabular-nums oc-text-faint">{totalCount} 笔</span>
         </div>
 
         <div className="oc-input-wrap">
-          <Search className="h-3.5 w-3.5 oc-text-faint" aria-hidden />
+          <Search className="h-icon-action w-icon-action oc-text-faint" aria-hidden />
           <label htmlFor="trade-pair-search" className="sr-only">
             筛选交易对
           </label>
@@ -194,7 +194,7 @@ function TradeList({ onSelectTrade, onSymbolChange }: Props) {
               aria-label="清除筛选"
               onClick={() => setPairSearch('')}
             >
-              <X className="h-3 w-3" aria-hidden />
+              <X className="h-icon-inline w-icon-inline" aria-hidden />
             </button>
           ) : null}
         </div>
@@ -220,7 +220,7 @@ function TradeList({ onSelectTrade, onSymbolChange }: Props) {
         </div>
 
         {statsError ? (
-          <p className="text-[12px] oc-text-loss" role="alert">
+          <p className="text-oc-12 oc-text-loss" role="alert">
             交易对统计加载失败：{statsError}
           </p>
         ) : null}
@@ -232,12 +232,12 @@ function TradeList({ onSelectTrade, onSymbolChange }: Props) {
             <div key={i} className="h-12 oc-skeleton" />
           ))
         ) : error ? (
-          <p className="px-2 py-8 text-center text-[13px] oc-text-loss" role="alert">
+          <p className="px-2 py-8 text-center text-oc-13 oc-text-loss" role="alert">
             交易加载失败：{error}
           </p>
         ) : trades.length === 0 ? (
           <div className="px-2 py-8 text-center">
-            <p className="text-[13px] oc-text-faint">该数据集暂无交易</p>
+            <p className="text-oc-13 oc-text-faint">该数据集暂无交易</p>
             <button
               type="button"
               className="oc-btn oc-btn--sm oc-btn--primary mt-2"

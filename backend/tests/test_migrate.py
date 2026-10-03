@@ -182,3 +182,48 @@ def test_kline_cache_is_reset_once_then_left_alone(migrated):
     migrated.boot()
     conn = sqlite3.connect(migrated.db_path)
     assert conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0] == 1
+
+
+PERCENT_RATE_DB = """
+CREATE TABLE datasets (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(128) NOT NULL UNIQUE, created_at DATETIME);
+CREATE TABLE trades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL,
+  symbol VARCHAR(32) NOT NULL, direction VARCHAR(8) NOT NULL, leverage FLOAT,
+  entry_price FLOAT NOT NULL, exit_price FLOAT, profit FLOAT, profit_rate FLOAT,
+  entry_time BIGINT NOT NULL, exit_time BIGINT, margin FLOAT);
+CREATE TABLE trade_annotations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, subject_type VARCHAR(16) NOT NULL DEFAULT 'trade',
+  subject_id INTEGER NOT NULL, note TEXT, setup_tags TEXT, error_tags TEXT,
+  grade VARCHAR(4), emotion VARCHAR(16), planned_stop FLOAT, planned_target FLOAT,
+  updated_at DATETIME);
+INSERT INTO datasets (id, name) VALUES (1, '我的');
+INSERT INTO trades (dataset_id, symbol, direction, entry_price, profit, margin, profit_rate, entry_time)
+  VALUES (1, 'TRUMP-USDT', 'short', 2.48, 3030.47919674, 1399.8829528592, 216.480898, 1),
+         (1, 'ETH-USDT', 'long', 3000, 419.78951687, 486.13, 86.353345, 2),
+         (1, 'SOL-USDT', 'long', 100, 265, 1170, 0.2264, 3),
+         (1, 'BTC-USDT', 'long', 100, 150, 3000, 5.0, 4);
+INSERT INTO trade_annotations (subject_type, subject_id, note)
+  VALUES ('trade', 1, 'kept'), ('trade', 99, 'orphan');
+"""
+
+
+def test_percent_style_profit_rate_is_normalized_once(migrated):
+    """\u6536\u76ca\u7387 arrived as percent in a live \u4ea4\u5272\u5355 and as a ratio in the sample sheet."""
+    conn = migrated(PERCENT_RATE_DB)
+    rates = [r[0] for r in conn.execute("SELECT profit_rate FROM trades ORDER BY id")]
+    assert rates[0] == pytest.approx(2.16480898, rel=1e-6), "percent row must be scaled"
+    assert rates[1] == pytest.approx(0.86353345, rel=1e-6)
+    assert rates[2] == 0.2264, "a ratio row is already correct and stays verbatim"
+    assert rates[3] == pytest.approx(0.05, rel=1e-6)
+
+    conn.close()
+    migrated.boot()
+    conn = sqlite3.connect(migrated.db_path)
+    again = [r[0] for r in conn.execute("SELECT profit_rate FROM trades ORDER BY id")]
+    assert again == rates, "a second boot must not divide again"
+
+
+def test_orphan_annotations_are_removed(migrated):
+    conn = migrated(PERCENT_RATE_DB)
+    notes = [r[0] for r in conn.execute("SELECT note FROM trade_annotations ORDER BY id")]
+    assert notes == ["kept"]

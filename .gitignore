@@ -5,12 +5,24 @@
 .sisyphus
 .workflow
 __pycache__/
+*.py[cod]
+.venv/
+*.db-wal
+*.db-shm
+*.db-journal
 *.db
 *.sqlite3
 *.log
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
 .codex
 .vscode
 .pi
+.pi-glla/
 
 # Binance account exports (contain PII)
 Binance-*.xlsx

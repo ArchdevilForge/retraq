@@ -47,14 +47,19 @@ class TestVisualBaselines:
         finally:
             ctx.close()
 
-    def test_train_setup(self, browser, seed, theme):
+    def test_replay_hide_future(self, browser, seed, theme):
+        """藏未来回放态（原训练模式能力，已并入复盘）截图基线。"""
         ctx = new_context(browser, seed, theme=theme)
         page = ctx.new_page()
         try:
             hook_page(page)
-            goto(page, "/train")
-            page.wait_for_timeout(700)
-            _shot(page, f"train-setup-{theme}")
+            goto(page, "/replay")
+            page.wait_for_timeout(1200)
+            toggle = page.locator("button[title*='隐藏未来']")
+            expect(toggle).to_be_visible(timeout=10000)
+            toggle.click()
+            page.wait_for_timeout(900)
+            _shot(page, f"replay-hide-future-{theme}")
         finally:
             ctx.close()
 

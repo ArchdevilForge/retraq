@@ -103,3 +103,17 @@ def test_garbage_first_import_leaves_no_phantom_dataset(client: TestClient, db_s
     listed = [d["name"] for d in client.get("/api/datasets").json()["data"]]
     assert label not in listed
     assert db_session.query(Dataset).filter(Dataset.name == label).first() is None
+
+
+def test_oversized_upload_is_rejected_before_parsing(client: TestClient):
+    """The body is read into memory, so the size cap has to come before pandas sees it."""
+    from main import MAX_UPLOAD_BYTES
+
+    blob = b"0" * (MAX_UPLOAD_BYTES + 1)
+    res = client.post(
+        "/api/trades/import",
+        params={"template": "langge", "replace": True, "label": "too-big"},
+        files={"file": ("huge.csv", blob, "text/csv")},
+    )
+    assert res.status_code == 413
+    assert "文件过大" in res.json()["detail"]

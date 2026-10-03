@@ -12,39 +12,8 @@ from typing import Optional
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from models import SUBJECT_TRADE, Dataset, ReviewNote, Trade, TradeAnnotation
+from models import SUBJECT_TRADE, Dataset, Trade, TradeAnnotation
 
-REVIEW_CADENCES = ("daily", "weekly", "monthly")
-
-REVIEW_CHECKLISTS: dict[str, dict[str, object]] = {
-    "daily": {
-        "label": "日复盘 · 5 分钟",
-        "questions": [
-            "今天遵守交易计划了吗？",
-            "有没有违反规则的交易？属于哪类错误？",
-            "交易时段的情绪状态如何？",
-            "明天保持什么、改变什么？（写进一句话结论）",
-        ],
-    },
-    "weekly": {
-        "label": "周复盘 · 30 分钟",
-        "questions": [
-            "按 setup 分的胜率与盈亏怎么样？",
-            "本周最常见的错误是什么，代价是多少？",
-            "哪个时段表现最差？",
-            "下周的一个具体改变是什么？（写进一句话结论）",
-        ],
-    },
-    "monthly": {
-        "label": "月复盘 · 1 小时",
-        "questions": [
-            "哪些 setup 期望值最高、哪些该停？",
-            "R 值分布相比上月是否改善？",
-            "本月最大的行为模式是什么？",
-            "下月的一个改变是什么？（写进一句话结论）",
-        ],
-    },
-}
 
 # R 值分布桶（右开区间）；两端桶无界。
 R_BUCKETS = [
@@ -225,44 +194,3 @@ class AnalysisService:
 
 analysis_service = AnalysisService()
 
-
-def list_reviews(db: Session, cadence: Optional[str], limit: int = 30) -> list[dict]:
-    q = db.query(ReviewNote)
-    if cadence:
-        q = q.filter(ReviewNote.cadence == cadence)
-    rows = q.order_by(ReviewNote.period_key.desc()).limit(limit).all()
-    return [
-        {
-            "id": r.id,
-            "cadence": r.cadence,
-            "period_key": r.period_key,
-            "content": r.content,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        }
-        for r in rows
-    ]
-
-
-def upsert_review(db: Session, cadence: str, period_key: str, content: str) -> dict:
-    if cadence not in REVIEW_CADENCES:
-        raise ValueError(f"Unknown cadence: {cadence}")
-    if not period_key.strip():
-        raise ValueError("period_key is required")
-    row = (
-        db.query(ReviewNote)
-        .filter(ReviewNote.cadence == cadence, ReviewNote.period_key == period_key)
-        .first()
-    )
-    if row is None:
-        row = ReviewNote(cadence=cadence, period_key=period_key)
-        db.add(row)
-    setattr(row, "content", content)
-    db.commit()
-    db.refresh(row)
-    return {
-        "id": row.id,
-        "cadence": row.cadence,
-        "period_key": row.period_key,
-        "content": row.content,
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-    }

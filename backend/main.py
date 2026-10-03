@@ -6,20 +6,22 @@ from typing import Optional
 import ccxt
 import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, Response, Request
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+
+from time_utils import iso_utc
 
 from database import get_db
 from migrate import ensure_database
 from models import Trade, Dataset, TradeFill
 from dataset_scope import get_dataset_id
 from services.kline_service import kline_service, TIMEFRAMES
-from services.trade_importer import trade_importer, TEMPLATES, TEMPLATE_LABELS, detect_template
+from services.trade_importer import trade_importer, TEMPLATES, detect_template
 from services.trade_analyzer import trade_analyzer
 from services.symbol_utils import normalize_symbol, is_valid_symbol
 from services.master_service import master_service
-from services.binance_sync_service import SYNC_DATASET_NAME, binance_sync_service, get_credentials
+from services.binance_sync_service import binance_sync_service, get_credentials
 from services.annotation_service import (
     ERROR_TAG_PRESETS,
     EMOTION_PRESETS,
@@ -29,10 +31,7 @@ from services.annotation_service import (
     annotation_service,
 )
 from services.analysis_service import (
-    REVIEW_CHECKLISTS,
     analysis_service,
-    list_reviews,
-    upsert_review,
 )
 
 ensure_database()
@@ -60,17 +59,28 @@ def _auto_sync_on_startup() -> None:
     threading.Thread(target=run, daemon=True).start()
 
 
+def _warm_kline_exchanges() -> None:
+    """ccxt load_markets costs ~19s on gate; pay it at boot, not on the first chart.
+
+    Set KLINE_WARM_MARKETS=0 to skip (the test suite does: it has no network to warm).
+    """
+    if os.getenv("KLINE_WARM_MARKETS", "1") == "0":
+        return
+    import threading
+
+    threading.Thread(target=kline_service.warm_markets, daemon=True).start()
+
+
 _auto_sync_on_startup()
+_warm_kline_exchanges()
 
 app = FastAPI(title="Trading Replay API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORSMiddleware on purpose: the UI is served same-origin (Vite dev proxy / FastAPI
+# static mount). A wildcard here would let any web page you visit read this database.
+
+
+MAX_UPLOAD_BYTES = 32 * 1024 * 1024  # a six-month fill export is a few MB of text
 
 
 class DatasetUpdate(BaseModel):
@@ -89,7 +99,8 @@ class AnnotationUpdate(BaseModel):
 
 class DrawingCreate(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
-    kind: str = Field(..., min_length=1, max_length=8)
+    # Kind validity (hline | trend | region | fib) is checked by the drawing service.
+    kind: str = Field(..., min_length=1)
     payload: list[dict]
 
 
@@ -145,16 +156,6 @@ def delete_drawing(drawing_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-@app.get("/api/binance/sync/status")
-def binance_sync_status(db: Session = Depends(get_db)):
-    ds = db.query(Dataset).filter(Dataset.name == SYNC_DATASET_NAME).first()
-    return {
-        "configured": get_credentials() is not None,
-        "dataset_id": ds.id if ds else None,
-        "trade_count": db.query(Trade).filter(Trade.dataset_id == ds.id).count() if ds else 0,
-    }
-
-
 @app.post("/api/binance/sync")
 def binance_sync(db: Session = Depends(get_db)):
     try:
@@ -165,78 +166,6 @@ def binance_sync(db: Session = Depends(get_db)):
         raise HTTPException(401, f"币安 API 认证失败，请检查 Key 与 Secret：{e}")
     except ccxt.BaseError as e:
         raise HTTPException(502, f"币安接口请求失败：{e}")
-
-
-class ReviewUpsert(BaseModel):
-    cadence: str = Field(..., min_length=1, max_length=8)
-    period_key: str = Field(..., min_length=1, max_length=16)
-    content: str = Field(..., min_length=1)
-
-
-class TrainingSave(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=32)
-    timeframe: str = Field(..., min_length=1, max_length=8)
-    start_equity: float = Field(..., gt=0)
-    realized_pnl: float
-    fees: float
-    trades: list[dict]
-
-
-@app.post("/api/train/save")
-def save_training_session(body: TrainingSave, db: Session = Depends(get_db)):
-    """落库一次训练会话：闭环交易进 owner=sim 数据集，可再进复盘与分析（docs/PRODUCT.md §六）。"""
-    if not body.trades:
-        raise HTTPException(400, "本局没有任何闭环交易，无需保存")
-
-    now = pd.Timestamp.now(tz="Asia/Shanghai")
-    base_name = f"[训练] {now.strftime('%Y-%m-%d %H:%M')} {body.symbol} {body.timeframe}"[:120]
-    # 同一分钟内可以 legitimately 打完两局同名会话：加序号而不是拒绝，
-    # 否则第二局闭环交易直接丢失（用户只看到一个报错 toast）。
-    ds_name = base_name
-    serial = 2
-    while db.query(Dataset.id).filter(Dataset.name == ds_name).first() is not None:
-        suffix = f" #{serial}"
-        ds_name = base_name[: 128 - len(suffix)] + suffix
-        serial += 1
-    ds = Dataset(name=ds_name, owner="sim")
-    db.add(ds)
-    db.flush()
-
-    rows = []
-    for t in body.trades:
-        try:
-            rows.append(
-                Trade(
-                    dataset_id=ds.id,
-                    symbol=str(t["symbol"]),
-                    direction=str(t["direction"]),
-                    leverage=float(t.get("leverage") or 1.0),
-                    entry_price=float(t["entry_price"]),
-                    exit_price=float(t["exit_price"]),
-                    profit=float(t["profit"]),
-                    profit_rate=float(t["profit"]) / float(t["margin"]) if float(t.get("margin") or 0) > 0 else None,
-                    margin=float(t["margin"]) if t.get("margin") else None,
-                    entry_time=int(t["entry_time"]),
-                    exit_time=int(t["exit_time"]),
-                )
-            )
-        except (KeyError, TypeError, ValueError):
-            raise HTTPException(400, "训练交易记录字段无效")
-    db.add_all(rows)
-    db.commit()
-    return {
-        "success": True,
-        "dataset_id": ds.id,
-        "dataset_name": ds_name,
-        "trade_count": len(rows),
-        "realized_pnl": body.realized_pnl,
-        "fees": body.fees,
-    }
-
-
-@app.get("/api/analysis/checklists")
-def review_checklists():
-    return {"data": [{"cadence": k, "label": v["label"], "questions": v["questions"]} for k, v in REVIEW_CHECKLISTS.items()]}
 
 
 @app.get("/api/analysis/by-setup")
@@ -259,34 +188,12 @@ def analysis_discipline(include_sim: bool = False, include_master: bool = False,
     return analysis_service.discipline(db, include_sim, include_master)
 
 
-@app.get("/api/reviews")
-def reviews_list(cadence: Optional[str] = None, limit: int = 30, db: Session = Depends(get_db)):
-    return {"data": list_reviews(db, cadence, min(max(limit, 1), 200))}
-
-
-@app.put("/api/reviews")
-def reviews_upsert(body: ReviewUpsert, db: Session = Depends(get_db)):
-    try:
-        return upsert_review(db, body.cadence, body.period_key, body.content)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
-
-@app.get("/api/import/templates")
-def list_import_templates():
-    return {
-        "templates": [
-            {"id": k, "label": TEMPLATE_LABELS.get(k, k)} for k in TEMPLATES
-        ]
-    }
-
-
 @app.get("/api/datasets")
 def list_datasets(db: Session = Depends(get_db)):
     rows = db.query(Dataset).order_by(Dataset.id).all()
     return {
         "data": [
-            {"id": d.id, "name": d.name, "owner": d.owner, "created_at": d.created_at}
+            {"id": d.id, "name": d.name, "owner": d.owner, "created_at": iso_utc(d.created_at)}
             for d in rows
         ]
     }
@@ -303,7 +210,7 @@ def update_dataset(dataset_id: int, body: DatasetUpdate, db: Session = Depends(g
     d.name = body.name  # type: ignore[assignment]
     db.commit()
     db.refresh(d)
-    return {"id": d.id, "name": d.name, "owner": d.owner, "created_at": d.created_at}
+    return {"id": d.id, "name": d.name, "owner": d.owner, "created_at": iso_utc(d.created_at)}
 
 
 @app.delete("/api/datasets/{dataset_id}")
@@ -311,6 +218,10 @@ def delete_dataset(dataset_id: int, db: Session = Depends(get_db)):
     d = db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not d:
         raise HTTPException(404, "Dataset not found")
+    # trade_annotations has no FK to cascade through (its subject is polymorphic), so its
+    # notes would outlive the trades as orphans.
+    trade_ids = [row[0] for row in db.query(Trade.id).filter(Trade.dataset_id == dataset_id).all()]
+    annotation_service.delete_annotations_for_trades(db, trade_ids)
     db.delete(d)
     db.commit()
     return {"ok": True}
@@ -388,9 +299,7 @@ async def import_trades(
     label: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    if template == "auto":
-        pass
-    elif template not in TEMPLATES:
+    if template != "auto" and template not in TEMPLATES:
         raise HTTPException(400, f"Unknown template. Supported: auto, {list(TEMPLATES)}")
     if not file.filename:
         raise HTTPException(400, "Missing filename")
@@ -401,12 +310,25 @@ async def import_trades(
     if not fn.endswith((".xlsx", ".csv")):
         raise HTTPException(400, "Only .xlsx, .csv are supported")
 
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413, f"文件过大（上限 {MAX_UPLOAD_BYTES // (1024 * 1024)}MB），请拆分后再导入"
+        )
+
     ds_name = (label.strip() if label and label.strip() else _dataset_label_from_filename(file.filename))
     suffix = ".csv" if fn.endswith(".csv") else ".xlsx"
+    # pandas + SQLite parsing is blocking work; off the event loop so a large sheet cannot
+    # stall every other request (and the kline back-fills) while it parses.
+    return await run_in_threadpool(_import_file, content, suffix, ds_name, template, replace, db)
+
+
+def _import_file(
+    content: bytes, suffix: str, ds_name: str, template: str, replace: bool, db: Session
+) -> dict:
     tmp_path = ""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
         resolved = detect_template(tmp_path) if template == "auto" else template
@@ -641,7 +563,7 @@ def sync_master_trader(trader_id: str, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(502, f"币安高手数据同步失败：{e}")
 
 
 _static_dir = os.getenv("RETRAQ_STATIC_DIR")

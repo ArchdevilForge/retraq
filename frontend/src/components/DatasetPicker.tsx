@@ -152,15 +152,15 @@ export default function DatasetPicker() {
     createPortal(
       <div
         ref={panelRef}
-        className="oc-dropdown fixed z-[200] max-h-64 overflow-y-auto py-1"
-        style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width }}
+        className="oc-dropdown fixed max-h-64 overflow-y-auto py-1"
+        style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width, zIndex: 'var(--oc-z-popover)' }}
       >
         <ul role="listbox">
           {ownerGroups.map(({ key, label, items }) => {
             if (items.length === 0) return null;
             return (
               <li key={key} aria-hidden={false}>
-                <div className="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--text-weak)]">
+                <div className="px-oc-3 pb-1 pt-1.5 text-oc-10 font-medium uppercase tracking-wider text-[var(--text-weak)]">
                   {label}
                 </div>
                 <ul role="group" aria-label={label}>
@@ -179,7 +179,7 @@ export default function DatasetPicker() {
                           }}
                         >
                           <span
-                            className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
+                            className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-pill ${selected ? 'bg-[var(--text-interactive-base)]' : 'bg-[var(--text-weaker)]'}`}
                           />
                           <span className="min-w-0 break-all leading-snug">{p.name}</span>
                         </button>
@@ -191,9 +191,9 @@ export default function DatasetPicker() {
                           onClick={() => (confirming ? void onDeleteDataset(p.id) : setConfirmDeleteId(p.id))}
                         >
                           {confirming ? (
-                            <span className="text-[10px] leading-none">确认</span>
+                            <span className="text-oc-10 leading-none">确认</span>
                           ) : (
-                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            <Trash2 className="h-icon-action w-icon-action" aria-hidden />
                           )}
                         </button>
                       </li>
@@ -212,7 +212,7 @@ export default function DatasetPicker() {
             onClick={() => void onBinanceSync()}
             disabled={syncing}
           >
-            <RefreshCw className={`h-3.5 w-3.5 shrink-0 oc-text-brand ${syncing ? 'animate-spin' : ''}`} aria-hidden />
+            <RefreshCw className={`h-icon-action w-icon-action shrink-0 oc-text-brand ${syncing ? 'animate-spin' : ''}`} aria-hidden />
             <span className="min-w-0 leading-snug">{syncing ? '同步中…' : '同步币安合约'}</span>
           </button>
         </div>
@@ -239,7 +239,7 @@ export default function DatasetPicker() {
         disabled={importBusy}
         onClick={() => fileRef.current?.click()}
       >
-        <Upload className="h-4 w-4 oc-text-brand" aria-hidden />
+        <Upload className="h-icon-tool w-icon-tool oc-text-brand" aria-hidden />
       </button>
 
       <button
@@ -256,16 +256,16 @@ export default function DatasetPicker() {
         }}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Database className="h-4 w-4 shrink-0 oc-text-brand" aria-hidden />
+          <Database className="h-icon-tool w-icon-tool shrink-0 oc-text-brand" aria-hidden />
           <span className="truncate">{active ? truncateMiddle(active.name, 42) : emptyLabel}</span>
         </span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 opacity-60 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`h-icon-tool w-icon-tool shrink-0 opacity-60 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>
       {error ? (
-        <span className="max-w-[16rem] truncate text-[12px] oc-text-loss" role="alert" title={error}>
+        <span className="max-w-[16rem] truncate text-oc-12 oc-text-loss" role="alert" title={error}>
           表格加载失败：{error}
         </span>
       ) : null}
