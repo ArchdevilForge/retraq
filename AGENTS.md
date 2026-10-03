@@ -7,7 +7,6 @@ Retraq：本地交易复盘（FastAPI + React）。用户可见文案默认中�
 - 先读再改，最小 diff；搜索：`fast_context_search` → `rg`。
 - Python 依赖与运行：**uv**（`backend/`）。
 - 前端：`frontend/`，**pnpm**。
-- 实现规范：`.trellis/spec/backend/`、`.trellis/spec/frontend/`。
 - 产品/视觉：`docs/PRODUCT.md`、`docs/DESIGN.md`。
 
 ## 启动
